@@ -40,6 +40,33 @@
 - 说明：`/ws` 路径写死在代码中，无法通过配置修改
 - 解决：用 `@Value("${javaclaw.ws.path:/ws}")` 从 `application.yml` 读取
 
+### Step 6：验证
+
+**问题 8：本地 PostgreSQL 与 Docker 端口冲突导致鉴权失败**
+
+- 现象：`mvn spring-boot:run` 启动时报 `FATAL: password authentication failed for user "javaclaw"`
+- 根因：本地 PostgreSQL 服务占用了 `5432`，应用实际连接到了本地实例，而不是 Docker 容器里的 `project2-postgres-1`
+- 解决：
+  - 关闭本地 PostgreSQL 服务或进程，确保 `5432` 由 Docker 映射处理
+  - 保留 `application.yml` 中 `jdbc:postgresql://localhost:5432/javaclaw`
+
+**问题 9：Git Bash 环境下 `python3` 命中 WindowsApps 占位符**
+
+- 文件：`scripts/phase1-verify.sh`
+- 现象：脚本在 `[4/5] POST /v1/chat` 阶段失败，`python3` 返回码 `49`
+- 根因：`python3` 指向 `/c/Users/.../WindowsApps/python3` 占位路径，不是可执行 Python
+- 解决：解释器探测从“只检查 `command -v`”改为“`command -v` + `--version` 可执行校验”，不可用时回退到 `python`
+
+**问题 10：`npx wscat` 在当前环境不可执行**
+
+- 文件：`scripts/phase1-verify.sh`
+- 现象：WebSocket 兜底校验报错 `execvpe(/bin/bash) failed: No such file or directory`
+- 根因：当前终端环境下 `npx` 调起 `wscat` 依赖 `/bin/bash`，与本机 WSL/Git Bash 路径不一致
+- 解决：WebSocket 校验策略调整为：
+  - 优先 Python `websockets`
+  - 兜底 `wscat`
+  - 两者不可用时输出 `SKIP`，不阻断 Phase 1 验证流程
+
 ### 环境配置
 
 **问题 6：PATH 中 `%JAVA_HOME%` 未展开**

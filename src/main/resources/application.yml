@@ -1,0 +1,10 @@
+server:
+  port: 18789
+
+spring:
+  application:
+    name: javaclaw
+
+logging:
+  level:
+    com.javaclaw: DEBUG

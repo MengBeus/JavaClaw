@@ -253,3 +253,160 @@
 | Observability | 基本缺失 | 内置全套（自研） | 内置全套（Java 生态） | ZeroClaw 思路 + Java 优势 |
 
 **总体倾向**：9 个模块中，7 个偏 ZeroClaw，2 个取两者之长。ZeroClaw 的设计哲学（接口驱动、职责清晰、安全优先）更适合 JAVAClaw，但 Java 生态在记忆系统（Lucene）、插件系统（SPI）、可观测性（Micrometer/OTel）上有独特优势。
+
+---
+
+## 11. 架构审查与修复
+
+> 初版架构设计中发现的 7 个问题及修复方案，按优先级排列。
+
+### [P0-1] 安全上线顺序有窗口期
+
+**问题**：ShellTool 在 Phase 3 上线，但 Docker 沙箱在 Phase 6，等于高危工具先裸跑 3 个阶段。
+
+**修复**：沙箱与工具同步上线。
+- Phase 3 新增 `ToolExecutor` 接口，所有工具通过它执行
+- `DockerExecutor`：Docker 可用时，`docker run --rm --network=none` 隔离执行
+- `RestrictedNativeExecutor`：Docker 不可用时的降级方案——工作目录白名单、命令黑名单、执行超时、输出截断
+- Phase 6 变为"沙箱加固"：资源限制、自动检测、策略配置
+
+**Phase 路线变更**：
+```
+Phase 3（原）: ShellTool + FileReadTool
+Phase 3（改）: ShellTool + FileReadTool + ToolExecutor（基础沙箱）
+Phase 6（原）: Docker 沙箱执行
+Phase 6（改）: 沙箱加固（资源限制、自动检测、策略配置）
+```
+
+---
+
+### [P0-2] 插件安全边界不成立
+
+**问题**："JAR 比 npm 安全"这个前提不够，进程内加载第三方 JAR 依然可拿到宿主进程的全部权限。
+
+**修复**：插件双轨制。
+- **Track A（内置/可信）**：SPI 进程内加载，用于官方插件和用户自己写的插件
+- **Track B（第三方/不可信）**：独立 JVM 子进程运行，通过 stdin/stdout JSON-RPC 通信
+- Track B 插件跑在受限环境中，通过 `ProcessBuilder` 控制资源
+- 插件清单 `plugin.yaml` 声明权限需求（网络、文件系统、Shell），加载时用户确认
+- 默认所有第三方插件走 Track B，用户可手动"信任"升级到 Track A
+
+```
+~/.javaclaw/plugins/
+├── trusted/       # Track A: SPI 进程内加载
+└── sandboxed/     # Track B: 子进程隔离运行
+```
+
+---
+
+### [P1-3] 并发模型混用
+
+**问题**：同时用了 Virtual Threads、Flux、同步 `Tool.execute()`，后续会有取消/背压/阻塞语义冲突。
+
+**修复**：统一为 Virtual Threads 同步模型，Flux 只用在对外边界。
+- 内部一律同步阻塞：`Tool.execute()`、`Provider.chat()`、`MemoryStore.recall()` 全部同步，跑在 Virtual Threads 上
+- Flux 只出现在两个边界：
+  1. `AgentOrchestrator.runStream()` — 对外推送流式事件给 WebSocket/SSE
+  2. `ModelProvider.chatStream()` — 接收 LLM 的流式 token
+- 桥接：Provider 内部用 `BlockingQueue` 把流式 token 转为同步 `Iterator<ChatEvent>`，Agent Loop 同步消费
+- 取消：Virtual Thread 用 `Thread.interrupt()`，边界处转换为 `Disposable.dispose()`
+
+```
+客户端 ←[Flux]← Gateway ←[同步/VT]← Agent Loop ←[Iterator]← Provider ←[Flux]← LLM API
+         边界1                                                  边界2
+```
+
+---
+
+### [P1-4] PostgreSQL + Lucene 的一致性没定义
+
+**问题**：会话存储和索引更新没有明确事务边界、补偿和重建策略。
+
+**修复**：最终一致 + 异步索引 + 重建机制。
+- PostgreSQL 是 source of truth，Lucene 是派生索引
+- 写入顺序：先写 PG（事务提交）→ 再异步更新 Lucene
+- 异步队列：`index_queue` 表记录待索引的 `memory_id`，后台线程消费并更新 Lucene
+- 失败补偿：后台定时扫描 `index_queue` 中未完成的条目重试
+- 全量重建：`/admin/reindex` 命令，启动时检测索引版本号，不匹配则自动重建
+- 不追求强一致：记忆检索晚几秒更新完全可接受
+
+```
+store() → PG.insert(事务) → indexQueue.offer(memoryId) → [异步] Lucene.index()
+                                                              ↓ 失败
+                                                         index_queue 表重试
+
+启动时 → 检查 index_version → 不匹配 → 全量 reindex
+```
+
+---
+
+### [P1-5] 混合检索打分过于理想化
+
+**问题**：`α*vector + (1-α)*keyword` 直接线性加权，向量分数和 BM25 分数量纲、分布不一致，召回质量不稳定。
+
+**修复**：改用 Reciprocal Rank Fusion (RRF)。
+- RRF 只依赖排名不依赖原始分数，天然解决量纲问题
+- 公式：`RRF_score(d) = 1/(k + rank_vector(d)) + 1/(k + rank_keyword(d))`，k=60
+- 如果某文档只在一个列表中出现，另一个 rank 设为大数（如 1000）
+- 两个搜索各返回 Top-N 带排名，合并后按 RRF 分数重排，取 Top-K
+
+```java
+double rrf(int vectorRank, int keywordRank) {
+    return 1.0 / (60 + vectorRank) + 1.0 / (60 + keywordRank);
+}
+```
+
+---
+
+### [P2-6] 配置热更新方案偏理想
+
+**问题**：`@RefreshScope` 不能自动解决本地配置热重载和安全策略一致性问题。
+
+**修复**：分层配置 + 自研 ConfigWatcher，不依赖 Spring 魔法。
+- 配置分三级：
+  - **静态**（改了要重启）：数据库连接、端口、沙箱类型、插件目录
+  - **热更新**（运行时可改）：模型选择、Channel 启用/禁用、工具权限、提示词模板
+  - **安全策略**（热更新但需确认）：白名单、审批规则、限流阈值——变更需配对码二次验证
+- `ConfigWatcher` 用 `WatchService` 监听 `~/.javaclaw/config.yaml` 变更，解析后通知订阅者
+- 可热更新的组件实现 `Reconfigurable` 接口：
+
+```java
+public interface Reconfigurable {
+    void onConfigChange(ConfigDiff diff);
+}
+```
+
+---
+
+### [P2-7] Provider 可靠性设计不完整
+
+**问题**：有重试/降级，但缺少超时预算、熔断、限流联动、幂等键等工程化要素。
+
+**修复**：补全完整的可靠性工程。
+
+- **超时预算**：每个请求有总超时（如 120s），重试共享预算
+  ```
+  第1次: timeout = min(30s, remaining)
+  第2次: timeout = min(30s, remaining - elapsed)
+  预算用完 → 直接降级，不再重试
+  ```
+- **熔断**：简单计数器熔断
+  ```
+  连续失败 ≥ 3 次 → 熔断打开 → 直接走降级模型
+  每 60s 放一个探测请求 → 成功则关闭熔断
+  ```
+- **限流联动**：记录每个模型的 RPM/TPM 消耗，接近限额时主动切换备用模型，不等 429
+- **幂等键**：非流式请求生成 `idempotency_key = hash(model + messages)`，命中缓存直接返回，避免重试重复计费
+- **降级链**：有序降级列表，不只是"主+备"
+
+```yaml
+providers:
+  primary: deepseek-v3
+  fallback:
+    - gpt-4o-mini
+    - ollama/qwen2.5   # 本地模型，永远可用
+  timeout_budget: 120s
+  circuit_breaker:
+    threshold: 3
+    reset_interval: 60s
+```

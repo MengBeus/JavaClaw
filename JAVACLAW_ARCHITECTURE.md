@@ -130,8 +130,19 @@ public interface ChannelAdapter {
 ```java
 public interface AgentOrchestrator {
     AgentResponse run(AgentRequest request);
-    Flux<AgentEvent> runStream(AgentRequest request);  // 流式
+    Flux<AgentEvent> runStream(AgentRequest request);  // 流式（仅对外边界）
 }
+```
+
+**并发模型**：内部同步 + 边界流式
+- 内部一律同步阻塞，跑在 Virtual Threads 上（Tool.execute、Provider.chat、MemoryStore.recall）
+- Flux 只出现在两个边界：`runStream()` 对外推送事件、`chatStream()` 接收 LLM 流式 token
+- Provider 内部用 `BlockingQueue` 把流式 token 转为同步 `Iterator<ChatEvent>`，Agent Loop 同步消费
+- 取消语义：Virtual Thread 用 `Thread.interrupt()`，边界处转换为 `Disposable.dispose()`
+
+```
+客户端 ←[Flux]← Gateway ←[同步/VT]← Agent Loop ←[Iterator]← Provider ←[Flux]← LLM API
+         边界1                                                  边界2
 ```
 
 **设计参考**：
@@ -167,10 +178,28 @@ ModelProvider (接口)
   └── ProviderRouter (多模型路由 + 降级)
 ```
 
-**可靠性层**（参考 ZeroClaw 的 `reliable.rs`）：
-- 重试：指数退避，可配置次数
-- 降级：主模型不可用时自动切换备用模型
+**可靠性层**（参考 ZeroClaw 的 `reliable.rs`，补全工程化要素）：
+- 超时预算：每个请求有总超时（如 120s），重试共享预算，不是每次重试都给满时间
+- 重试：指数退避，在超时预算内重试，预算耗尽直接降级
+- 熔断：连续失败 ≥ 3 次 → 熔断打开 → 直接走降级模型；每 60s 放一个探测请求，成功则关闭
+- 降级链：有序降级列表（如 deepseek-v3 → gpt-4o-mini → ollama/qwen2.5），不只是"主+备"
+- 限流联动：记录每个模型的 RPM/TPM 消耗，接近限额时主动切换，不等 429
+- 幂等键：非流式请求生成 `idempotency_key = hash(model + messages)`，命中缓存直接返回，避免重试重复计费
 - 成本追踪：记录每次调用的 token 消耗和费用
+
+**可靠性配置示例**：
+
+```yaml
+providers:
+  primary: deepseek-v3
+  fallback:
+    - gpt-4o-mini
+    - ollama/qwen2.5   # 本地模型，永远可用
+  timeout_budget: 120s
+  circuit_breaker:
+    threshold: 3
+    reset_interval: 60s
+```
 
 ### 4.5 Tool（工具）
 
@@ -202,7 +231,9 @@ public interface Tool {
 
 **安全**：
 - 危险工具（Shell、FileWrite）需要审批确认
-- 工具执行支持 Docker 沙箱隔离
+- 所有工具通过 `ToolExecutor` 接口执行，不直接调用系统 API
+- `ToolExecutor` 两个实现：`DockerExecutor`（Docker 可用时）和 `RestrictedNativeExecutor`（降级方案：工作目录白名单、命令黑名单、执行超时）
+- 工具执行与沙箱同步上线（Phase 3），不存在"裸跑"窗口期
 
 ### 4.6 Memory（记忆）
 
@@ -211,14 +242,19 @@ public interface Tool {
 **两层存储**：
 
 ```
-会话历史（PostgreSQL）
+会话历史（PostgreSQL） ← source of truth
   → 完整的消息记录，按 session 分组
 
-长期记忆（Lucene）
+长期记忆（Lucene） ← 派生索引，可从 PG 重建
   → 向量索引：语义相似度检索
   → 关键词索引：BM25 精确匹配
-  → 混合排序：加权合并两种结果
+  → 混合排序：Reciprocal Rank Fusion (RRF)
 ```
+
+**一致性模型**：最终一致，PostgreSQL 是 source of truth
+- 写入顺序：先写 PG（事务提交）→ 再异步更新 Lucene 索引
+- 失败补偿：`index_queue` 表记录待索引条目，后台定时重试
+- 全量重建：`/admin/reindex` 命令，启动时检测索引版本号，不匹配则自动重建
 
 **关键接口**：
 
@@ -232,10 +268,12 @@ public interface MemoryStore {
 
 **检索流程**：
 1. 用户消息进来
-2. 向量搜索：将消息转为 embedding，找语义相似的记忆
-3. 关键词搜索：BM25 匹配关键词
-4. 混合排序：`score = α * vectorScore + (1-α) * keywordScore`
-5. 取 Top-K 注入 Agent 的提示词上下文
+2. 向量搜索：将消息转为 embedding，找语义相似的记忆，返回 Top-N 带排名
+3. 关键词搜索：BM25 匹配关键词，返回 Top-N 带排名
+4. RRF 融合：`RRF_score(d) = 1/(k + rank_vector) + 1/(k + rank_keyword)`，k=60
+5. 按 RRF 分数重排，取 Top-K 注入 Agent 的提示词上下文
+
+> 不用 `α*vector + (1-α)*keyword` 线性加权——向量分数和 BM25 分数量纲、分布不一致，线性加权召回质量不稳定。RRF 只依赖排名，天然解决这个问题。
 
 ---
 
@@ -252,9 +290,13 @@ public interface MemoryStore {
 ### 5.2 Config（配置）
 
 - `~/.javaclaw/config.yaml` — 主配置文件
-- 支持热重载（Spring `@RefreshScope`）
 - 环境变量覆盖（12-Factor 风格）
-- 配置项：模型选择、Channel 启用、工具权限、安全策略
+- 配置分三级：
+  - **静态**（改了要重启）：数据库连接、端口、沙箱类型、插件目录
+  - **热更新**（运行时可改）：模型选择、Channel 启用/禁用、工具权限、提示词模板
+  - **安全策略**（热更新但需确认）：白名单、审批规则、限流阈值——变更需配对码二次验证
+- 热更新机制：`ConfigWatcher` 监听配置文件变更（`WatchService`），解析后通知实现了 `Reconfigurable` 接口的组件
+- 不依赖 `@RefreshScope`，避免 Spring 魔法带来的一致性问题
 
 ### 5.3 Observability（可观测性）
 
@@ -378,18 +420,24 @@ javaclaw/
 
 ## 8. 插件系统
 
-用 Java SPI 实现运行时插件加载，比 npm 插件更安全，比 Rust trait 更灵活。
+双轨制：可信插件进程内，不可信插件进程外隔离。
+
+**Track A（内置/可信）**：SPI 进程内加载
+- 官方插件和用户自己写的插件
+- `~/.javaclaw/plugins/trusted/` 目录，JAR 包启动时扫描
+- `META-INF/services/` 声明实现类
+
+**Track B（第三方/不可信）**：子进程隔离
+- 独立 JVM 子进程运行，通过 stdin/stdout JSON-RPC 通信
+- `~/.javaclaw/plugins/sandboxed/` 目录
+- 插件声明权限需求（`plugin.yaml`：网络、文件系统、Shell），加载时用户确认
+- 默认所有第三方插件走 Track B，用户可手动"信任"升级到 Track A
 
 **可扩展点**：
 - `ModelProvider` — 新增模型后端
 - `ChannelAdapter` — 新增消息平台
 - `Tool` — 新增工具能力
 - `MemoryStore` — 替换记忆实现
-
-**加载方式**：
-1. 内置实现：直接在对应模块中
-2. 外部插件：放入 `~/.javaclaw/plugins/` 目录，JAR 包自动扫描加载
-3. SPI 声明：`META-INF/services/` 下注册实现类
 
 ---
 
@@ -409,13 +457,14 @@ javaclaw/
 - javaclaw-channel：CliAdapter（本地调试）
 - 目标：CLI 输入 → Agent 调 LLM → CLI 输出
 
-### Phase 3：工具 + 会话
+### Phase 3：工具 + 会话 + 基础沙箱
 
 - javaclaw-tool：ShellTool + FileReadTool
+- javaclaw-tool：ToolExecutor 接口 + DockerExecutor + RestrictedNativeExecutor（基础沙箱，与工具同步上线）
 - javaclaw-agent：支持 tool_call 多轮循环
 - javaclaw-common/session：会话历史持久化（PostgreSQL）
 - javaclaw-security：工具审批流程
-- 目标：Agent 能调用工具，会话可持续
+- 目标：Agent 能调用工具（有沙箱保护），会话可持续
 
 ### Phase 4：消息平台
 
@@ -430,10 +479,10 @@ javaclaw/
 - Agent 集成记忆检索
 - 目标：Agent 有长期记忆，运行可监控
 
-### Phase 6：插件 + 加固
+### Phase 6：插件 + 沙箱加固
 
-- SPI 插件加载机制
-- Docker 沙箱执行
+- 插件双轨制：Track A（SPI 进程内）+ Track B（子进程隔离）
+- 沙箱加固：资源限制（CPU/内存/网络）、自动检测 Docker 可用性、策略配置
 - 更多工具（Browser、Git、Cron）
 - 更多 Channel（Slack、微信、飞书）
 - 目标：系统可扩展，安全加固完成

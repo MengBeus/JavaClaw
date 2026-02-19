@@ -5,6 +5,10 @@ spring:
   application:
     name: javaclaw
 
+javaclaw:
+  ws:
+    path: /ws
+
 logging:
   level:
     com.javaclaw: DEBUG

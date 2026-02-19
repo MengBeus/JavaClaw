@@ -32,6 +32,9 @@ Thumbs.db
 _openclaw/
 _zeroclaw/
 
+# Claude CLI
+.claude/
+
 # Config with secrets
 config.yaml
 *.env

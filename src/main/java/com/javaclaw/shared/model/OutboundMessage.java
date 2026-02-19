@@ -6,4 +6,4 @@ public record OutboundMessage(
     String channelId,
     String content,
     Map<String, String> metadata
-)
+) {}

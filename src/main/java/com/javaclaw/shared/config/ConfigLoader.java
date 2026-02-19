@@ -34,10 +34,14 @@ public class ConfigLoader {
         var server = (Map<String, Object>) raw.getOrDefault("server", Map.of());
         var providers = (Map<String, Object>) raw.getOrDefault("providers", Map.of());
         var db = (Map<String, Object>) raw.getOrDefault("database", Map.of());
+        var keys = (Map<String, Object>) raw.getOrDefault("api-keys", Map.of());
+
+        var apiKeys = new java.util.HashMap<String, String>();
+        keys.forEach((k, v) -> apiKeys.put(k, String.valueOf(v)));
 
         return new JavaClawConfig(
-            envOrDefault("JAVACLAW_PORT",
-                String.valueOf(server.getOrDefault("port", 18789))),
+            Integer.parseInt(envOrDefault("JAVACLAW_PORT",
+                String.valueOf(server.getOrDefault("port", 18789)))),
             (String) providers.getOrDefault("primary", "deepseek-v3"),
             (List<String>) providers.getOrDefault("fallback", List.of()),
             Map.of(
@@ -48,12 +52,12 @@ public class ConfigLoader {
                 "password", envOrDefault("JAVACLAW_DB_PASS",
                     (String) db.getOrDefault("password", "javaclaw"))
             ),
-            Map.of()
+            apiKeys
         );
     }
 
-    private static int envOrDefault(String env, String fallback) {
+    private static String envOrDefault(String env, String fallback) {
         var val = System.getenv(env);
-        return Integer.parseInt(val != null ? val : fallback);
+        return val != null ? val : fallback;
     }
 }

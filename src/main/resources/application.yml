@@ -4,6 +4,13 @@ server:
 spring:
   application:
     name: javaclaw
+  datasource:
+    url: jdbc:postgresql://localhost:5432/javaclaw
+    username: javaclaw
+    password: javaclaw
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 javaclaw:
   ws:

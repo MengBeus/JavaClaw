@@ -1,0 +1,1 @@
+-- Phase 3 will add session and chat_message tables

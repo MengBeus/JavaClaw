@@ -18,7 +18,7 @@ JAVAClaw 是一个 **消息驱动的 AI Agent 编排器**，运行在用户自�
 - Spring Boot 3（保持轻量，不滥用）
 - PostgreSQL（会话/审计持久化）
 - Lucene（记忆混合检索）
-- Maven 多模块
+- 单 Maven 模块 + 包分层（扁平结构，参考 zeroclaw/openclaw）
 - WebSocket + HTTP（对外协议）
 
 ---
@@ -339,81 +339,34 @@ public interface MemoryStore {
 
 ---
 
-## 7. 项目结构（Maven 多模块）
+## 7. 项目结构（单 Maven 模块 + 包分层）
 
 ```
 javaclaw/
-├── pom.xml                          # 父 POM
+├── pom.xml
 ├── docker-compose.yml
-│
-├── javaclaw-gateway/                # 网关（启动入口）
-│   └── src/main/java/
-│       ├── GatewayApp.java
-│       ├── ws/                      # WebSocket 处理
-│       ├── http/                    # REST 端点
-│       ├── auth/                    # 认证
-│       └── routing/                 # 请求路由
-│
-├── javaclaw-agent/                  # Agent 核心
-│   └── src/main/java/
-│       ├── AgentOrchestrator.java
-│       ├── AgentLoop.java
-│       ├── Classifier.java
-│       └── PromptBuilder.java
-│
-├── javaclaw-provider/               # 模型后端
-│   └── src/main/java/
-│       ├── ModelProvider.java
-│       ├── OpenAiCompatibleProvider.java
-│       ├── AnthropicProvider.java
-│       ├── OllamaProvider.java
-│       ├── ProviderRouter.java
-│       └── ReliableProvider.java
-│
-├── javaclaw-channel/                # 消息通道
-│   └── src/main/java/
-│       ├── ChannelAdapter.java
-│       ├── ChannelRegistry.java
-│       ├── TelegramAdapter.java
-│       ├── DiscordAdapter.java
-│       └── CliAdapter.java
-│
-├── javaclaw-tool/                   # 工具
-│   └── src/main/java/
-│       ├── Tool.java
-│       ├── ToolRegistry.java
-│       ├── ShellTool.java
-│       ├── FileReadTool.java
-│       ├── FileWriteTool.java
-│       ├── HttpRequestTool.java
-│       └── WebSearchTool.java
-│
-├── javaclaw-memory/                 # 记忆系统
-│   └── src/main/java/
-│       ├── MemoryStore.java
-│       ├── LuceneMemoryStore.java
-│       ├── EmbeddingService.java
-│       └── HybridSearcher.java
-│
-├── javaclaw-security/               # 安全
-│   └── src/main/java/
-│       ├── PairingService.java
-│       ├── TokenService.java
-│       ├── ApprovalService.java
-│       ├── AuditLogger.java
-│       └── SandboxExecutor.java
-│
-├── javaclaw-common/                 # 公共模型与工具
-│   └── src/main/java/
-│       ├── model/                   # 统一消息模型
-│       ├── session/                 # 会话管理
-│       └── config/                  # 配置加载
-│
-└── javaclaw-observability/          # 可观测性
-    └── src/main/java/
-        ├── CostTracker.java
-        ├── MetricsConfig.java
-        └── DoctorCommand.java
+├── config/config-example.yaml
+└── src/main/
+    ├── java/com/javaclaw/
+    │   ├── JavaClawApp.java          # @SpringBootApplication 启动入口
+    │   ├── shared/                   # 公共模型 + 配置
+    │   │   ├── model/                # InboundMessage, OutboundMessage, AgentRequest, AgentResponse, Session, ChatMessage
+    │   │   └── config/               # JavaClawConfig, ConfigLoader
+    │   ├── gateway/                  # HTTP + WebSocket 端点
+    │   ├── agent/                    # Agent 核心循环
+    │   ├── providers/                # LLM 模型后端
+    │   ├── channels/                 # CLI, Telegram, Discord, Slack...
+    │   ├── tools/                    # 工具框架 + 具体工具
+    │   ├── sessions/                 # 会话持久化
+    │   ├── approval/                 # 审批策略
+    │   ├── auth/                     # 配对认证 + 白名单
+    │   ├── security/                 # 沙箱执行器
+    │   ├── memory/                   # Lucene 混合检索
+    │   ├── observability/            # 成本追踪 + 指标 + 自检
+    │   └── plugins/                  # 插件加载
+    └── resources/
+        ├── application.yml
+        └── db/migration/
 ```
 
 ---
@@ -445,43 +398,43 @@ javaclaw/
 
 ### Phase 1：骨架
 
-- Maven 多模块搭建
-- javaclaw-common 统一消息模型
-- javaclaw-gateway 启动入口 + WebSocket
+- 单 Maven 模块 + 包分层搭建
+- `shared` 包：统一消息模型 + 配置
+- `gateway` 包：启动入口 + WebSocket
 - 配置加载、日志、Docker Compose（PostgreSQL）
 
 ### Phase 2：Agent 闭环
 
-- javaclaw-provider：OpenAiCompatibleProvider + 一个具体实现
-- javaclaw-agent：AgentLoop 主循环（无工具调用）
-- javaclaw-channel：CliAdapter（本地调试）
+- `providers` 包：OpenAiCompatibleProvider + 一个具体实现
+- `agent` 包：AgentLoop 主循环（无工具调用）
+- `channels` 包：CliAdapter（本地调试）
 - 目标：CLI 输入 → Agent 调 LLM → CLI 输出
 
 ### Phase 3：工具 + 会话 + 基础沙箱
 
-- javaclaw-tool：ShellTool + FileReadTool
-- javaclaw-tool：ToolExecutor 接口 + DockerExecutor + RestrictedNativeExecutor（基础沙箱，与工具同步上线）
-- javaclaw-agent：支持 tool_call 多轮循环
-- javaclaw-common/session：会话历史持久化（PostgreSQL）
-- javaclaw-security：工具审批流程
+- `tools` 包：ShellTool + FileReadTool
+- `security` 包：ToolExecutor 接口 + DockerExecutor + RestrictedNativeExecutor（基础沙箱，与工具同步上线）
+- `agent` 包：支持 tool_call 多轮循环
+- `sessions` 包：会话历史持久化（PostgreSQL）
+- `approval` 包：工具审批流程
 - 目标：Agent 能调用工具（有沙箱保护），会话可持续
 
 ### Phase 4：消息平台
 
-- javaclaw-channel：TelegramAdapter + DiscordAdapter
-- javaclaw-security：配对认证 + 白名单
+- `channels` 包：TelegramAdapter + DiscordAdapter
+- `auth` 包：配对认证 + 白名单
 - 目标：从 Telegram/Discord 收发消息，完成真实闭环
 
 ### Phase 5：记忆 + 可观测
 
-- javaclaw-memory：Lucene 混合检索
-- javaclaw-observability：成本追踪 + 指标 + /doctor
+- `memory` 包：Lucene 混合检索
+- `observability` 包：成本追踪 + 指标 + /doctor
 - Agent 集成记忆检索
 - 目标：Agent 有长期记忆，运行可监控
 
 ### Phase 6：插件 + 沙箱加固
 
-- 插件双轨制：Track A（SPI 进程内）+ Track B（子进程隔离）
+- `plugins` 包：插件双轨制 Track A（SPI 进程内）+ Track B（子进程隔离）
 - 沙箱加固：资源限制（CPU/内存/网络）、自动检测 Docker 可用性、策略配置
 - 更多工具（Browser、Git、Cron）
 - 更多 Channel（Slack、微信、飞书）

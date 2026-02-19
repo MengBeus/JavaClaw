@@ -1,0 +1,17 @@
+server:
+  port: 18789
+
+providers:
+  primary: deepseek-v3
+  fallback:
+    - gpt-4o-mini
+    - ollama/qwen2.5
+
+database:
+  url: jdbc:postgresql://localhost:5432/javaclaw
+  username: javaclaw
+  password: javaclaw
+
+api-keys:
+  deepseek: your-deepseek-api-key
+  openai: your-openai-api-key

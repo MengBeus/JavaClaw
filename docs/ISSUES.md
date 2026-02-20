@@ -148,3 +148,24 @@
 - 文件：`src/main/java/com/javaclaw/channels/ChannelRegistry.java:11`
 - 说明：`register()` 直接 `put`，相同 id 的 adapter 会被静默覆盖，配置错误时不会暴露
 - 解决：注册前检查 `containsKey`，重复则抛 `IllegalArgumentException("Duplicate channel adapter: " + id)`
+
+### Step 4：Gateway 串联
+
+**问题 20：/quit 不能让程序真正退出**
+
+- 文件：`src/main/java/com/javaclaw/channels/CliAdapter.java:33`、`src/main/java/com/javaclaw/gateway/JavaClawApp.java:19`
+- 说明：`/quit` 只停了 CLI 读线程，但 Spring Boot 内置的 Tomcat Web 服务器仍在运行（监听 18789 端口），JVM 检测到非守护线程存活，进程不退出
+- 解决：CliAdapter 新增 `onStop(Runnable)` 回调，`/quit` 时调用 `registry.stopAll()` + `ctx.close()` 关闭 Spring 上下文
+- 遗留：当前 `/quit` 会关闭整个程序，Phase 4 多通道时需改为只停当前通道（见 EXECUTION_PLAN.md Phase 4 备注）
+
+**问题 21：出站通道硬编码为 cli**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:38`
+- 说明：`cli.send(...)` 直接引用 CLI adapter 变量，不管消息从哪个通道进来都回复到 CLI。多通道时 Telegram 用户的回复会发到 CLI 终端
+- 解决：改为 `registry.get(msg.channelId())` 按入站 channelId 动态查找对应 adapter 回发
+
+**问题 22：DeepSeek API Key 无启动期校验**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:24-25`
+- 说明：`getOrDefault("deepseek", "")` 拿到空字符串也照常注册 provider，用户首条消息才收到 401 错误，排查成本高
+- 解决：启动时检查 API Key，空则 `log.warn` 提醒用户配置 `~/.javaclaw/config.yaml`

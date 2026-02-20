@@ -260,6 +260,10 @@ com.javaclaw.approval/
 - 单测：PairingService 配对码生成/验证、WhitelistService 持久化
 - 集成脚本：模拟 Telegram 消息 → 配对 → 对话 → 工具审批
 
+### 备注（来自 Phase 2 遗留）
+
+- **`/quit` 生命周期改造**：Phase 2 中 CLI `/quit` 会调 `ctx.close()` 关闭整个程序（因为只有 CLI 一个通道）。Phase 4 多通道共存时需改为：`/quit` 只停 CLI 自身，由 ChannelRegistry 判断是否所有通道都已停止，全停才关闭 Spring 上下文。参见 ISSUES.md 问题 20。
+
 ---
 
 ## Phase 5：记忆 + 可观测

@@ -17,13 +17,13 @@ public class RestrictedNativeExecutor implements ToolExecutor {
     }
 
     @Override
-    public String execute(String command, String workDir, long timeoutSeconds) {
+    public ExecutionResult execute(String command, String workDir, long timeoutSeconds) {
         if (workDir != null && !isAllowedDir(workDir)) {
-            return "[BLOCKED] Working directory not in whitelist: " + workDir;
+            return new ExecutionResult("[BLOCKED] Working directory not in whitelist: " + workDir, -1);
         }
         for (var blocked : BLOCKED) {
             if (command.contains(blocked)) {
-                return "[BLOCKED] Command contains dangerous pattern: " + blocked;
+                return new ExecutionResult("[BLOCKED] Command contains dangerous pattern: " + blocked, -1);
             }
         }
         try {
@@ -41,10 +41,10 @@ public class RestrictedNativeExecutor implements ToolExecutor {
             if (!proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 proc.destroyForcibly();
                 reader.join(5000);
-                return "[TIMEOUT] Command exceeded " + timeoutSeconds + "s";
+                return new ExecutionResult("[TIMEOUT] Command exceeded " + timeoutSeconds + "s", -1);
             }
             reader.join(5000);
-            return stdout.toString();
+            return new ExecutionResult(stdout.toString(), proc.exitValue());
         } catch (Exception e) {
             throw new RuntimeException("Native execution failed", e);
         }

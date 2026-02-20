@@ -32,9 +32,8 @@ public class ShellTool implements Tool {
     public ToolResult execute(ToolContext ctx, JsonNode input) {
         try {
             var command = input.get("command").asText();
-            var output = executor.execute(command, ctx.workDir(), 30);
-            boolean isError = output.startsWith("[BLOCKED]") || output.startsWith("[TIMEOUT]");
-            return new ToolResult(output, isError);
+            var result = executor.execute(command, ctx.workDir(), 30);
+            return new ToolResult(result.output(), result.isError());
         } catch (Exception e) {
             return new ToolResult(e.getMessage(), true);
         }

@@ -10,7 +10,7 @@ public class DockerExecutor implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DockerExecutor.class);
 
     @Override
-    public String execute(String command, String workDir, long timeoutSeconds) {
+    public ExecutionResult execute(String command, String workDir, long timeoutSeconds) {
         try {
             var pb = new ProcessBuilder("docker", "run", "--rm",
                     "--memory=256m", "--cpus=0.5", "--pids-limit=64",
@@ -26,10 +26,10 @@ public class DockerExecutor implements ToolExecutor {
             if (!proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 proc.destroyForcibly();
                 reader.join(5000);
-                return "[TIMEOUT] Command exceeded " + timeoutSeconds + "s";
+                return new ExecutionResult("[TIMEOUT] Command exceeded " + timeoutSeconds + "s", -1);
             }
             reader.join(5000);
-            return stdout.toString();
+            return new ExecutionResult(stdout.toString(), proc.exitValue());
         } catch (Exception e) {
             throw new RuntimeException("Docker execution failed", e);
         }
@@ -40,8 +40,13 @@ public class DockerExecutor implements ToolExecutor {
         try {
             var proc = new ProcessBuilder("docker", "info")
                     .redirectErrorStream(true).start();
-            proc.getInputStream().readAllBytes();
-            return proc.waitFor(5, TimeUnit.SECONDS) && proc.exitValue() == 0;
+            var drain = Thread.startVirtualThread(() -> {
+                try { proc.getInputStream().transferTo(java.io.OutputStream.nullOutputStream()); } catch (Exception ignored) {}
+            });
+            var done = proc.waitFor(5, TimeUnit.SECONDS);
+            if (!done) proc.destroyForcibly();
+            drain.join(2000);
+            return done && proc.exitValue() == 0;
         } catch (Exception e) {
             log.debug("Docker not available: {}", e.getMessage());
             return false;

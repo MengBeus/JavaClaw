@@ -230,3 +230,9 @@
 - 文件：`src/main/java/com/javaclaw/security/DockerExecutor.java:43-44`
 - 说明：`isAvailable()` 仍用旧模式——先 `readAllBytes()` 再 `waitFor(5s)`。`docker info` 输出量大时同样会触发管道缓冲区死锁，探测卡住
 - 解决：与 `execute()` 同样模式，虚拟线程异步消费 stdout（丢弃到 `nullOutputStream()`），主线程 `waitFor(5s)` 超时则 `destroyForcibly()`
+
+**问题 32：FileWriteTool 符号链接文件写入越界**
+
+- 文件：`src/main/java/com/javaclaw/tools/FileWriteTool.java:39`
+- 说明：问题 29 修复时 FileWriteTool 只校验了父目录的 `toRealPath()`，未校验目标文件本身。若工作目录内存在一个指向外部的 symlink 文件，父目录校验通过（父目录确实在工作目录内），但 `Files.writeString()` 会跟随符号链接写入外部文件
+- 解决：写入前增加 `Files.exists(target) && !target.toRealPath().startsWith(base)` 检查，若目标文件已存在且其真实路径不在工作目录内，返回 `isError=true`

@@ -296,3 +296,18 @@
 - 文件：`src/main/java/com/javaclaw/sessions/PostgresSessionStore.java:29-30`
 - 说明：save 事务内先 DELETE 全部消息再 INSERT，同一 sessionId 并发请求时后提交事务覆盖先提交结果（last-write-wins）
 - 解决：upsert session 后增加 `SELECT id FROM sessions WHERE id = ? FOR UPDATE` 行级锁，序列化同一 session 的并发写入
+
+### Step 4：工具审批
+
+**问题 41：CLI 审批输入与主循环共用 System.in 读入冲突**
+
+- 文件：`src/main/java/com/javaclaw/approval/CliApprovalStrategy.java:13`、`src/main/java/com/javaclaw/channels/CliAdapter.java:32`
+- 说明：CliAdapter 在读线程持有一个 BufferedReader，CliApprovalStrategy 又 `new BufferedReader(new InputStreamReader(System.in))` 创建第二个。两个独立 BufferedReader 读同一 System.in，审批输入会被错误消费或阻塞
+- 根因：未考虑 System.in 是单例资源，多个 BufferedReader 各自维护独立缓冲区，互相抢数据
+- 解决：JavaClawApp 创建一个共享 `BufferedReader(new InputStreamReader(System.in))`，同时传给 CliAdapter（构造参数）和 CliApprovalStrategy（构造参数），CliAdapter 不再内部创建 reader
+
+**问题 42：DefaultAgentOrchestrator 假设 request.context() 非空**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:34`
+- 说明：`request.context().get("userId")` 未做空保护，context 为 null 时 NPE
+- 解决：提取 context 时先判空，null 则用空 Map 兜底

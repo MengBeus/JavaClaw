@@ -236,3 +236,18 @@
 - 文件：`src/main/java/com/javaclaw/tools/FileWriteTool.java:39`
 - 说明：问题 29 修复时 FileWriteTool 只校验了父目录的 `toRealPath()`，未校验目标文件本身。若工作目录内存在一个指向外部的 symlink 文件，父目录校验通过（父目录确实在工作目录内），但 `Files.writeString()` 会跟随符号链接写入外部文件
 - 解决：写入前增加 `Files.exists(target) && !target.toRealPath().startsWith(base)` 检查，若目标文件已存在且其真实路径不在工作目录内，返回 `isError=true`
+
+**问题 33：FileWriteTool 仍存在“先产生副作用再拦截”的窗口**
+
+- 文件：`src/main/java/com/javaclaw/tools/FileWriteTool.java`
+- 说明：旧实现在完成全部边界校验前就可能执行 `createDirectories`，当输入路径越界时虽然最终返回错误，但可能已在工作目录外创建目录（副作用已发生）。
+- 解决：将所有路径/边界校验前置（`target.startsWith(base)`、`parent.startsWith(base)`、最近已存在祖先 real path 校验、目标符号链接校验），只有全部通过后才允许创建目录和写入。
+- 加固：写入时改为 `Files.newOutputStream(..., LinkOption.NOFOLLOW_LINKS)`，拒绝跟随目标符号链接。
+
+**问题 34：tools/security 测试覆盖不足**
+
+- 文件：`src/test/java/com/javaclaw/tools/FileWriteToolTest.java`、`src/test/java/com/javaclaw/tools/ShellToolTest.java`
+- 说明：此前仅有 `PromptBuilder/ResilientCall` 等测试，缺少工具层关键安全行为回归测试。
+- 解决：新增最小测试集：
+  - `FileWriteToolTest`：验证工作目录内正常写入、越界路径被拒且不会产生目录副作用。
+  - `ShellToolTest`：验证非 0 退出码标记 `isError=true`，0 退出码标记 `isError=false`。

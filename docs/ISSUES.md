@@ -302,8 +302,9 @@
 **问题 41：CLI 审批输入与主循环共用 System.in 读入冲突**
 
 - 文件：`src/main/java/com/javaclaw/approval/CliApprovalStrategy.java:13`、`src/main/java/com/javaclaw/channels/CliAdapter.java:32`
-- 说明：CliAdapter 在读线程持有一个 BufferedReader，CliApprovalStrategy 又 `new BufferedReader(new InputStreamReader(System.in))` 创建第二个。两个独立 BufferedReader 读同一 System.in，审批输入会被错误消费或阻塞
-- 根因：未考虑 System.in 是单例资源，多个 BufferedReader 各自维护独立缓冲区，互相抢数据
+- 说明：CliAdapter 在读线程持有一个 BufferedReader（reader A），CliApprovalStrategy 又 `new BufferedReader(new InputStreamReader(System.in))` 创建第二个（reader B）。两个独立 BufferedReader 读同一 System.in，各自维护独立 8KB 缓冲区，互相抢数据
+- 触发场景：Agent 调用 `file_write` 等 @DangerousOperation 工具时，reader B 调 `readLine()` 等审批输入，同时 reader A 的主循环也回到 `readLine()` 等待。用户输入 `y` 后，操作系统将字节交给 JVM，但两个 reader 都在等——若 reader A 先抢到，`y` 被当成新聊天消息发给 Agent，审批端永远收不到回复导致卡死；若 reader B 抢到，审批通过但后续正常消息可能被 reader B 残留缓冲区干扰
+- 根因：System.in 是单例字节流，多个 BufferedReader 包装同一流会产生竞争读取，结果不确定
 - 解决：JavaClawApp 创建一个共享 `BufferedReader(new InputStreamReader(System.in))`，同时传给 CliAdapter（构造参数）和 CliApprovalStrategy（构造参数），CliAdapter 不再内部创建 reader
 
 **问题 42：DefaultAgentOrchestrator 假设 request.context() 非空**

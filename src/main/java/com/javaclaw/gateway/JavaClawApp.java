@@ -7,6 +7,7 @@ import com.javaclaw.channels.ChannelAdapter;
 import com.javaclaw.channels.ChannelRegistry;
 import com.javaclaw.channels.CliAdapter;
 import com.javaclaw.providers.DeepSeekProvider;
+import com.javaclaw.providers.OllamaProvider;
 import com.javaclaw.providers.ProviderRouter;
 import com.javaclaw.shared.config.ConfigLoader;
 import com.javaclaw.security.DockerExecutor;
@@ -45,6 +46,8 @@ public class JavaClawApp {
         }
         var router = new ProviderRouter();
         router.register(new DeepSeekProvider(apiKey));
+        router.register(new OllamaProvider("qwen3:4b"));
+        router.setPrimary("ollama");
 
         // Tools
         var workDir = System.getProperty("user.dir");

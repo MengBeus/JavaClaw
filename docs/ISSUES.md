@@ -274,3 +274,25 @@
 - 说明：`buildToolsDef()` 对 `toolRegistry == null` 做了处理（不发工具定义），但 `executeTool()` 直接调 `toolRegistry.get(name)`。LLM 行为不可控，若仍返回 tool_call 则 NPE
 - 根因：防御逻辑只做了一半，未在每个消费点校验外部输入
 - 解决：`executeTool()` 入口增加 `toolRegistry == null` 检查，返回 `[ERROR] No tools registered`
+
+### Step 3：会话持久化
+
+**问题 38：会话元信息 user_id/channel_id 永远为 null**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:35`
+- 说明：`sessionStore.save(sessionId, null, null, history)` 写死 null，sessions 表的 user_id 和 channel_id 列永远为空
+- 根因：AgentRequest.context 里有 senderId/channelId 信息，但 Orchestrator 没提取
+- 解决：JavaClawApp 在构造 AgentRequest 时将 userId/channelId 放入 context Map，Orchestrator 提取后传给 save
+
+**问题 39：tool_call 过程消息未持久化**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:33-34`
+- 说明：save 前只追加了 user + final assistant 两条消息，AgentLoop 运行中产生的 assistant(tool_calls) 和 tool result 消息被丢弃。重启后这部分上下文丢失，LLM 无法理解之前的工具交互
+- 根因：消息追加逻辑在 Orchestrator 而非 AgentLoop，Orchestrator 看不到循环内部的中间消息
+- 解决：AgentLoop.execute() 直接往 history 列表追加所有消息（user、assistant+tool_calls、tool results、final assistant），Orchestrator 只负责 load + save
+
+**问题 40：delete-all + reinsert 并发覆盖风险**
+
+- 文件：`src/main/java/com/javaclaw/sessions/PostgresSessionStore.java:29-30`
+- 说明：save 事务内先 DELETE 全部消息再 INSERT，同一 sessionId 并发请求时后提交事务覆盖先提交结果（last-write-wins）
+- 解决：upsert session 后增加 `SELECT id FROM sessions WHERE id = ? FOR UPDATE` 行级锁，序列化同一 session 的并发写入

@@ -80,3 +80,71 @@
 - 说明：初次配置时只设了 `JAVA_HOME` 变量和 Maven 路径，漏了 `JAVA_HOME\bin`
 - 错误：Maven 报 `The JAVA_HOME environment variable is not defined correctly`
 - 解决：将 JDK bin 目录追加到用户 PATH
+
+---
+
+## Phase 2：Agent 闭环
+
+### Step 1：providers（模型后端）
+
+**问题 11：ModelProvider 缺少 chatStream 接口**
+
+- 文件：`src/main/java/com/javaclaw/providers/ModelProvider.java:3`
+- 说明：执行计划要求接口包含 `chat, chatStream, id` 三个方法，但实现时遗漏了 `chatStream`
+- 解决：新增 `Iterator<ChatEvent> chatStream(ChatRequest request)`，采用 `Iterator` 而非 `Flux`，符合架构文档内部同步模型（`Agent Loop ←[Iterator]← Provider`）
+- 联动：`OpenAiCompatibleProvider` 添加最小实现（同步 chat 结果包装为单元素迭代器），`ProviderRouter` 同步实现委托
+
+**问题 12：ProviderRouter 未注册 provider 时空指针**
+
+- 文件：`src/main/java/com/javaclaw/providers/ProviderRouter.java:28`
+- 说明：`providers.get(primaryId).chat(request)` 在无注册 provider 或 primaryId 为 null 时直接 NPE
+- 解决：提取 `resolve()` 方法统一做空值检查，抛 `IllegalStateException("No provider registered")`
+
+**问题 13：ResilientCall 全局超时压缩重试空间**
+
+- 文件：`src/main/java/com/javaclaw/providers/ResilientCall.java:12-15`
+- 说明：使用全局 30s deadline，若首次尝试耗时 25s 失败，剩余重试仅 5s，基本无效。计划语义是"每次尝试 30s + 重试 2 次"
+- 解决：移除全局 deadline，改为纯重试计数（最多 2 次重试 + 指数退避 500ms/1s）。单次请求超时由 `OpenAiCompatibleProvider` 的 HTTP client `.timeout(Duration.ofSeconds(30))` 保证
+
+### Step 2：agent（Agent 核心）
+
+**问题 14：多轮对话历史未接入调用链**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:22`
+- 说明：`agentLoop.execute(request.message(), null)` 固定传 null 给 history，导致每次调用 LLM 只带 system + 当前 user 消息，无法多轮对话
+- 根因：LLM 本身无记忆，需要每次把完整聊天记录（user + assistant 交替）发送过去
+- 解决：`DefaultAgentOrchestrator` 内部用 `ConcurrentHashMap<sessionId, List<Message>>` 维护会话历史，每轮调用后追加 user 和 assistant 消息
+
+**问题 15：AgentRequest 的 sessionId/context 被丢弃**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:19-22`
+- 说明：代码只使用了 `request.message()`，sessionId 和 context 完全忽略，无法区分不同用户的对话
+- 解决：与问题 14 一并修复，用 sessionId 作为会话历史的 key
+
+**问题 16：空消息导致 NPE**
+
+- 文件：`src/main/java/com/javaclaw/agent/PromptBuilder.java:15`
+- 说明：`Map.of("role", "user", "content", userMessage)` 在 userMessage 为 null 时抛 NPE
+- 解决：`PromptBuilder.build()` 入口校验 null/blank，抛 `IllegalArgumentException("userMessage must not be empty")`
+
+### Step 3：channels（消息通道）
+
+**问题 17：CliAdapter.start() 阻塞导致 startAll() 卡死**
+
+- 文件：`src/main/java/com/javaclaw/channels/CliAdapter.java:24`、`src/main/java/com/javaclaw/channels/ChannelRegistry.java:18`
+- 说明：`start()` 实现为前台死循环（`while + readLine()`），调用后不返回。`ChannelRegistry.startAll()` 串行遍历调用各 adapter 的 `start()`，第一个阻塞后，后续 adapter 永远启动不了
+- 根因：没有从调用方角度考虑 `start()` 的语义——架构设计意图是"启动监听"（非阻塞），而非"阻塞在这里监听"
+- 解决：`start()` 内部用 `Thread.startVirtualThread()` 起虚拟线程跑读循环，`start()` 本身立即返回，符合架构文档 Virtual Threads 并发模型
+
+**问题 18：stop() 无法可靠停止 CLI 监听线程**
+
+- 文件：`src/main/java/com/javaclaw/channels/CliAdapter.java:46`
+- 说明：`stop()` 只设 `running = false`，但线程卡在 `readLine()` 阻塞上，感知不到 flag 变化，必须等用户按回车才能退出循环
+- 根因：`readLine()` 是操作系统级阻塞 I/O，Java 变量修改无法打断
+- 解决：`stop()` 增加 `readThread.interrupt()` 中断阻塞线程，线程抛异常后检查 `running` flag 退出
+
+**问题 19：ChannelRegistry 重复 id 静默覆盖**
+
+- 文件：`src/main/java/com/javaclaw/channels/ChannelRegistry.java:11`
+- 说明：`register()` 直接 `put`，相同 id 的 adapter 会被静默覆盖，配置错误时不会暴露
+- 解决：注册前检查 `containsKey`，重复则抛 `IllegalArgumentException("Duplicate channel adapter: " + id)`

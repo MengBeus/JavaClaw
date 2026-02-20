@@ -9,6 +9,9 @@ public class PromptBuilder {
     private static final String SYSTEM_PROMPT = "You are JAVAClaw, a helpful AI assistant.";
 
     public List<Map<String, String>> build(String userMessage, List<Map<String, String>> history) {
+        if (userMessage == null || userMessage.isBlank()) {
+            throw new IllegalArgumentException("userMessage must not be empty");
+        }
         var messages = new ArrayList<Map<String, String>>();
         messages.add(Map.of("role", "system", "content", SYSTEM_PROMPT));
         if (history != null) messages.addAll(history);

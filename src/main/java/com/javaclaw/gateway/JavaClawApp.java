@@ -7,8 +7,14 @@ import com.javaclaw.channels.CliAdapter;
 import com.javaclaw.providers.DeepSeekProvider;
 import com.javaclaw.providers.ProviderRouter;
 import com.javaclaw.shared.config.ConfigLoader;
+import com.javaclaw.security.DockerExecutor;
+import com.javaclaw.security.RestrictedNativeExecutor;
 import com.javaclaw.shared.model.AgentRequest;
 import com.javaclaw.shared.model.OutboundMessage;
+import com.javaclaw.tools.FileReadTool;
+import com.javaclaw.tools.FileWriteTool;
+import com.javaclaw.tools.ShellTool;
+import com.javaclaw.tools.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
@@ -16,6 +22,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.Map;
+import java.util.Set;
 
 @SpringBootApplication(scanBasePackages = "com.javaclaw")
 public class JavaClawApp {
@@ -34,8 +41,18 @@ public class JavaClawApp {
         var router = new ProviderRouter();
         router.register(new DeepSeekProvider(apiKey));
 
+        // Tools
+        var workDir = System.getProperty("user.dir");
+        var docker = new DockerExecutor();
+        var executor = docker.isAvailable() ? docker
+                : new RestrictedNativeExecutor(Set.of(workDir));
+        var toolRegistry = new ToolRegistry();
+        toolRegistry.register(new ShellTool(executor));
+        toolRegistry.register(new FileReadTool());
+        toolRegistry.register(new FileWriteTool());
+
         // Agent
-        var agent = new DefaultAgentOrchestrator(router);
+        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir);
 
         // Channel
         var registry = new ChannelRegistry();

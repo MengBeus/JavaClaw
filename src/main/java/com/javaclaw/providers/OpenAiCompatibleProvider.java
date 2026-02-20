@@ -46,6 +46,9 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
         body.put("model", request.model() != null ? request.model() : defaultModel);
         body.put("messages", request.messages());
         body.put("temperature", request.temperature());
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            body.put("tools", request.tools());
+        }
 
         var json = mapper.writeValueAsString(body);
 
@@ -68,12 +71,23 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
 
     private ChatResponse parseResponse(JsonNode root) {
         var choice = root.path("choices").path(0).path("message");
-        var content = choice.path("content").asText("");
+        var content = choice.path("content").asText(null);
         var u = root.path("usage");
         var usage = Map.of(
                 "promptTokens", u.path("prompt_tokens").asInt(0),
                 "completionTokens", u.path("completion_tokens").asInt(0)
         );
-        return new ChatResponse(content, usage);
+        var toolCalls = new java.util.ArrayList<ToolCallInfo>();
+        var tcNode = choice.path("tool_calls");
+        if (tcNode.isArray()) {
+            for (var tc : tcNode) {
+                var fn = tc.path("function");
+                toolCalls.add(new ToolCallInfo(
+                        tc.path("id").asText(),
+                        fn.path("name").asText(),
+                        fn.path("arguments").asText("")));
+            }
+        }
+        return new ChatResponse(content != null ? content : "", usage, toolCalls);
     }
 }

@@ -22,7 +22,7 @@ class PromptBuilderTest {
 
     @Test
     void includesHistory() {
-        var history = List.of(
+        List<Map<String, Object>> history = List.of(
             Map.of("role", "user", "content", "hi"),
             Map.of("role", "assistant", "content", "hello")
         );
@@ -46,7 +46,7 @@ class PromptBuilderTest {
 
     @Test
     void handlesHistoryWithMissingKeys() {
-        var history = List.of(Map.of("role", "user"));  // 缺 content
+        List<Map<String, Object>> history = List.of(Map.of("role", "user"));
         var messages = builder.build("test", history);
         assertEquals(3, messages.size());
         assertNull(messages.get(1).get("content"));

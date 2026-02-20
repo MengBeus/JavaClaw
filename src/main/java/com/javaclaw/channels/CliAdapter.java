@@ -11,6 +11,11 @@ public class CliAdapter implements ChannelAdapter {
 
     private volatile boolean running;
     private Thread readThread;
+    private Runnable onStop;
+
+    public void onStop(Runnable callback) {
+        this.onStop = callback;
+    }
 
     @Override
     public String id() {
@@ -32,6 +37,7 @@ public class CliAdapter implements ChannelAdapter {
                 var line = reader.readLine();
                 if (line == null || "/quit".equals(line.trim())) {
                     stop();
+                    if (onStop != null) onStop.run();
                     break;
                 }
                 if (line.isBlank()) continue;

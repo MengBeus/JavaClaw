@@ -169,3 +169,46 @@
 - 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:24-25`
 - 说明：`getOrDefault("deepseek", "")` 拿到空字符串也照常注册 provider，用户首条消息才收到 401 错误，排查成本高
 - 解决：启动时检查 API Key，空则 `log.warn` 提醒用户配置 `~/.javaclaw/config.yaml`
+
+---
+
+## Phase 3：工具 + 会话 + 沙箱
+
+### Step 1：tools + security
+
+**问题 23：执行器超时控制失效（管道死锁）**
+
+- 文件：`src/main/java/com/javaclaw/security/DockerExecutor.java:22-23`、`src/main/java/com/javaclaw/security/RestrictedNativeExecutor.java:23-24`
+- 说明：初版 `readAllBytes()` 在 `waitFor()` 之前，阻塞到进程结束，超时判断形同虚设。修复后改为先 `waitFor()` 再 `readAllBytes()`，但引入管道缓冲区死锁——进程输出超过 64KB 时卡在写操作上，`waitFor()` 永远等不到进程结束
+- 根因：`waitFor()` 和 `readAllBytes()` 不能串行，必须并行消费 stdout
+- 解决：用 `Thread.startVirtualThread()` 起异步线程持续读 stdout（`transferTo(ByteArrayOutputStream)`），主线程 `waitFor(timeout)` 等进程结束，超时则 `destroyForcibly()` 杀进程
+
+**问题 24：RestrictedNativeExecutor 缺少工作目录白名单**
+
+- 文件：`src/main/java/com/javaclaw/security/RestrictedNativeExecutor.java:12`
+- 说明：架构文档要求降级执行器具备"白名单 + 黑名单 + 超时"三要素，实现时只有命令黑名单和超时，漏了工作目录白名单
+- 解决：构造参数新增 `Set<String> allowedDirs`，执行前校验 workDir 的 normalize 路径是否以白名单中某项开头，不在白名单则返回 `[BLOCKED]`
+
+**问题 25：文件工具可绕过工作目录边界（路径穿越）**
+
+- 文件：`src/main/java/com/javaclaw/tools/FileReadTool.java:31`、`src/main/java/com/javaclaw/tools/FileWriteTool.java:32`
+- 说明：`Path.of(workDir, inputPath)` 在 inputPath 为绝对路径时直接忽略 workDir，`..` 也未过滤，可读写任意文件
+- 解决：先 `base.resolve(inputPath).normalize()`，再 `startsWith(base)` 校验最终路径是否在工作目录内，越界返回 `isError=true`
+
+**问题 26：ShellTool 对执行失败信号未标记 isError**
+
+- 文件：`src/main/java/com/javaclaw/tools/ShellTool.java:36`
+- 说明：执行器返回 `[BLOCKED]`/`[TIMEOUT]` 字符串表示失败，但 ShellTool 固定返回 `isError=false`，Agent Loop 会把拦截信息当正常输出传给 LLM
+- 解决：检测返回字符串前缀，`[BLOCKED]` 或 `[TIMEOUT]` 开头标记 `isError=true`
+
+**问题 27：本地执行器硬编码 bash -c**
+
+- 文件：`src/main/java/com/javaclaw/security/RestrictedNativeExecutor.java:19`
+- 说明：写死 `bash -c`，纯 Windows 环境（无 Git Bash）下不可用
+- 解决：检测 `os.name`，Windows 用 `cmd /c`，其他系统用 `bash -c`
+
+**问题 28：Tool 接口签名与架构文档不一致**
+
+- 文件：`src/main/java/com/javaclaw/tools/Tool.java`
+- 说明：`inputSchema()` 返回 `String` 而非 `JsonNode`；`execute()` 参数顺序反了且入参类型为 `String` 而非 `JsonNode`；`ToolContext` 缺少权限字段
+- 解决：`inputSchema()` 改返回 `JsonNode`，`execute(ToolContext ctx, JsonNode input)` 对齐架构文档，`ToolContext` 新增 `Set<String> permissions`

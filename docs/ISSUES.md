@@ -492,3 +492,15 @@
 - 文件：`src/test/java/com/javaclaw/memory/LuceneMemoryStoreTest.java`、`src/test/java/com/javaclaw/observability/`
 - 说明：新增模块无测试覆盖，回归风险高
 - 解决：新增 10 个测试（LuceneMemoryStoreTest 4、MetricsConfigTest 2、CostTrackerTest 2、DoctorCommandTest 2），总测试数 31→41
+
+**问题 69：CostTracker 读取 token 字段名与 provider 返回的 key 不匹配**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:53`
+- 说明：读取 `prompt_tokens`/`completion_tokens`，但 `OpenAiCompatibleProvider` 返回的 usage key 是 `promptTokens`/`completionTokens`，`getOrDefault` 总走默认值 0
+- 解决：改为读取 `promptTokens`/`completionTokens`
+
+**问题 70：CostTracker 定价表 model 名与 provider.id() 不匹配**
+
+- 文件：`src/main/java/com/javaclaw/observability/CostTracker.java:19`
+- 说明：定价表 key 为 `deepseek-chat`，但 `DeepSeekProvider.id()` 返回 `deepseek-v3`，导致按 0 价格记账
+- 解决：定价表 key 改为 `deepseek-v3`

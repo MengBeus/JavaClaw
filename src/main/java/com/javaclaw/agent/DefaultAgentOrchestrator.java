@@ -50,8 +50,8 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
         sessionStore.save(request.sessionId(), userId, channelId, history);
         if (costTracker != null && response.usage() != null) {
             costTracker.record(request.sessionId(), modelId, modelId,
-                    response.usage().getOrDefault("prompt_tokens", 0),
-                    response.usage().getOrDefault("completion_tokens", 0));
+                    response.usage().getOrDefault("promptTokens", 0),
+                    response.usage().getOrDefault("completionTokens", 0));
         }
         return response;
     }

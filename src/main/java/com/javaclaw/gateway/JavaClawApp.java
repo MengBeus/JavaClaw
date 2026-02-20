@@ -56,10 +56,26 @@ public class JavaClawApp {
         toolRegistry.register(new FileReadTool());
         toolRegistry.register(new FileWriteTool());
 
-        // Approval
+        // Sandbox + Approval (三级策略)
         var stdinReader = new BufferedReader(new InputStreamReader(System.in));
         var approvalInterceptor = new ApprovalInterceptor();
-        approvalInterceptor.setDefault(new CliApprovalStrategy(stdinReader, System.out));
+        var dockerAvailable = docker.isAvailable();
+        if (dockerAvailable) {
+            // Tier 1: Docker 沙箱可用，危险工具自动放行
+            approvalInterceptor.setDefault((name, arguments) -> true);
+        } else if (config.allowNativeFallback()) {
+            // Tier 2: 无 Docker + 配置了 allow-native-fallback，走正常审批
+            log.warn("Docker unavailable, dangerous tools will require explicit approval");
+            approvalInterceptor.setDefault(new CliApprovalStrategy(stdinReader, System.out));
+        } else {
+            // Tier 3: 无 Docker + 未配置，审批时额外警告无沙箱保护
+            log.warn("Docker unavailable, dangerous tools will require explicit approval");
+            var cliStrategy = new CliApprovalStrategy(stdinReader, System.out);
+            approvalInterceptor.setDefault((name, arguments) -> {
+                System.out.println("[无沙箱保护] 当前无 Docker 沙箱，命令将直接在宿主机执行");
+                return cliStrategy.approve(name, arguments);
+            });
+        }
 
         // Session + Agent
         var sessionStore = new PostgresSessionStore(ctx.getBean(javax.sql.DataSource.class));

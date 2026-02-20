@@ -8,5 +8,6 @@ public record JavaClawConfig(
     String primaryProvider,
     List<String> fallbackProviders,
     Map<String, String> database,
-    Map<String, String> apiKeys
+    Map<String, String> apiKeys,
+    boolean allowNativeFallback
 ) {}

@@ -35,6 +35,7 @@ public class ConfigLoader {
         var providers = (Map<String, Object>) raw.getOrDefault("providers", Map.of());
         var db = (Map<String, Object>) raw.getOrDefault("database", Map.of());
         var keys = (Map<String, Object>) raw.getOrDefault("api-keys", Map.of());
+        var sandbox = (Map<String, Object>) raw.getOrDefault("sandbox", Map.of());
 
         var apiKeys = new java.util.HashMap<String, String>();
         keys.forEach((k, v) -> apiKeys.put(k, String.valueOf(v)));
@@ -52,7 +53,8 @@ public class ConfigLoader {
                 "password", envOrDefault("JAVACLAW_DB_PASS",
                     (String) db.getOrDefault("password", "javaclaw"))
             ),
-            apiKeys
+            apiKeys,
+            Boolean.TRUE.equals(sandbox.getOrDefault("allow-native-fallback", false))
         );
     }
 

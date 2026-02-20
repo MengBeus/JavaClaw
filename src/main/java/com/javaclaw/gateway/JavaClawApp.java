@@ -27,6 +27,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
 
@@ -36,6 +38,8 @@ public class JavaClawApp {
     private static final Logger log = LoggerFactory.getLogger(JavaClawApp.class);
 
     public static void main(String[] args) {
+        System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
+        System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
         var ctx = SpringApplication.run(JavaClawApp.class, args);
         var config = ConfigLoader.load();
 
@@ -61,7 +65,7 @@ public class JavaClawApp {
         toolRegistry.register(new FileWriteTool());
 
         // Sandbox + Approval (三级策略)
-        var stdinReader = new BufferedReader(new InputStreamReader(System.in));
+        var stdinReader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         var approvalInterceptor = new ApprovalInterceptor();
         if (dockerAvailable) {
             // Tier 1: Docker 沙箱可用，危险工具自动放行

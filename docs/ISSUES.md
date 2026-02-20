@@ -212,3 +212,21 @@
 - 文件：`src/main/java/com/javaclaw/tools/Tool.java`
 - 说明：`inputSchema()` 返回 `String` 而非 `JsonNode`；`execute()` 参数顺序反了且入参类型为 `String` 而非 `JsonNode`；`ToolContext` 缺少权限字段
 - 解决：`inputSchema()` 改返回 `JsonNode`，`execute(ToolContext ctx, JsonNode input)` 对齐架构文档，`ToolContext` 新增 `Set<String> permissions`
+
+**问题 29：文件工具符号链接越界**
+
+- 文件：`src/main/java/com/javaclaw/tools/FileReadTool.java:31`、`src/main/java/com/javaclaw/tools/FileWriteTool.java:32`
+- 说明：问题 25 的 `normalize() + startsWith()` 是词法校验，不解析符号链接。工作目录内若存在指向外部的 symlink，仍可通过 symlink 读写目录外文件
+- 解决：改用 `toRealPath()` 解析符号链接后再做 `startsWith` 校验。FileWriteTool 因目标文件可能不存在，改为校验父目录的 `toRealPath()`
+
+**问题 30：命令非 0 退出码未标记为错误**
+
+- 文件：`src/main/java/com/javaclaw/security/RestrictedNativeExecutor.java:47`、`src/main/java/com/javaclaw/security/DockerExecutor.java:32`、`src/main/java/com/javaclaw/tools/ShellTool.java:36`
+- 说明：执行器只返回输出字符串，不传递退出码；ShellTool 只检查 `[BLOCKED]`/`[TIMEOUT]` 前缀，命令执行失败（如 `ls nonexistent` 返回码 2）仍标记 `isError=false`
+- 解决：新增 `ExecutionResult(output, exitCode)` record，`isError()` 统一判断退出码非 0 或 BLOCKED/TIMEOUT 前缀。`ToolExecutor` 接口返回类型从 `String` 改为 `ExecutionResult`
+
+**问题 31：DockerExecutor.isAvailable() 管道死锁**
+
+- 文件：`src/main/java/com/javaclaw/security/DockerExecutor.java:43-44`
+- 说明：`isAvailable()` 仍用旧模式——先 `readAllBytes()` 再 `waitFor(5s)`。`docker info` 输出量大时同样会触发管道缓冲区死锁，探测卡住
+- 解决：与 `execute()` 同样模式，虚拟线程异步消费 stdout（丢弃到 `nullOutputStream()`），主线程 `waitFor(5s)` 超时则 `destroyForcibly()`

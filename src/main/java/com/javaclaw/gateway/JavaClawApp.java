@@ -109,6 +109,8 @@ public class JavaClawApp {
             toolRegistry.register(new MemoryStoreTool(memoryStore));
             toolRegistry.register(new MemoryRecallTool(memoryStore));
             agent.setMemoryStore(memoryStore);
+            ctx.registerShutdownHook();
+            Runtime.getRuntime().addShutdownHook(new Thread(memoryStore::close, "memory-close"));
             log.info("Memory store enabled at {}", indexPath);
         } catch (Exception e) {
             log.warn("Memory store unavailable: {}", e.getMessage());

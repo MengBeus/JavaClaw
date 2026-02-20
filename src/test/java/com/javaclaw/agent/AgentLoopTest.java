@@ -3,6 +3,8 @@ package com.javaclaw.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.approval.ApprovalInterceptor;
+import com.javaclaw.memory.MemoryResult;
+import com.javaclaw.memory.MemoryStore;
 import com.javaclaw.providers.ChatRequest;
 import com.javaclaw.providers.ChatResponse;
 import com.javaclaw.providers.ModelProvider;
@@ -102,6 +104,32 @@ class AgentLoopTest {
         assertEquals("assistant", history.get(1).get("role"));
         assertEquals("tool", history.get(2).get("role"));
         assertEquals("assistant", history.get(3).get("role"));
+    }
+
+    @Test
+    void memoryRecallAndStoreLifecycle() {
+        var recalled = new ArrayList<String>();
+        var stored = new ArrayList<String>();
+        var memoryStore = new MemoryStore() {
+            @Override public void store(String content, Map<String, Object> metadata) { stored.add(content); }
+            @Override public List<MemoryResult> recall(String query, int topK) {
+                recalled.add(query);
+                return List.of(new MemoryResult("1", "prior knowledge", 0.8, Map.of()));
+            }
+            @Override public void forget(String memoryId) {}
+        };
+
+        var provider = stubProvider(new ChatResponse("answer", Map.of()));
+        var loop = new AgentLoop(provider, new PromptBuilder(), null, "/tmp", null);
+        loop.setMemoryStore(memoryStore);
+
+        loop.execute("question", new ArrayList<>(), "s1", "cli", "user1");
+
+        assertEquals(1, recalled.size(), "should recall once on entry");
+        assertEquals("question", recalled.get(0));
+        assertEquals(1, stored.size(), "should store once on exit");
+        assertTrue(stored.get(0).contains("question"));
+        assertTrue(stored.get(0).contains("answer"));
     }
 
     // --- helpers ---

@@ -532,3 +532,15 @@
 - 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:103`、`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:38`
 - 说明：`LuceneMemoryStore` 未在启动时创建，memory tools 未注册到 ToolRegistry
 - 解决：JavaClawApp 创建 `EmbeddingService` + `LuceneMemoryStore`，注册 `MemoryStoreTool`/`MemoryRecallTool`，通过 `agent.setMemoryStore()` 注入 AgentLoop
+
+**问题 75：LuceneMemoryStore 生命周期未回收**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:112`
+- 说明：`LuceneMemoryStore.close()` 未在应用关闭路径调用，长期运行累积文件句柄
+- 解决：添加 `Runtime.getRuntime().addShutdownHook()` 调用 `memoryStore::close`
+
+**问题 76：Step3 关键行为缺少测试**
+
+- 文件：`src/test/java/com/javaclaw/tools/MemoryToolsTest.java`、`src/test/java/com/javaclaw/agent/AgentLoopTest.java:107`
+- 说明：无 MemoryStoreTool/MemoryRecallTool 专项测试，AgentLoop 未断言 recall/store 生命周期
+- 解决：新增 MemoryToolsTest 4 个、AgentLoopTest 增加 memoryRecallAndStoreLifecycle，总测试数 41→46

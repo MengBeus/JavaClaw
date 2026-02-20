@@ -312,3 +312,11 @@
 - 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:34`
 - 说明：`request.context().get("userId")` 未做空保护，context 为 null 时 NPE
 - 解决：提取 context 时先判空，null 则用空 Map 兜底
+
+### Step 5：沙箱三级策略
+
+**问题 43：docker.isAvailable() 被调用两次，执行器与审批分支可能不一致**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:52、62`
+- 说明：executor 选择和 Tier 判断各调一次 `docker.isAvailable()`，两次调用间 Docker 状态可能变化，导致执行器用了 Docker 但审批走了无沙箱分支，或反过来
+- 解决：首次调用结果缓存到 `dockerAvailable` 变量，后续统一复用

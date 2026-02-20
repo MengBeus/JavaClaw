@@ -33,7 +33,8 @@ public class ShellTool implements Tool {
         try {
             var command = input.get("command").asText();
             var output = executor.execute(command, ctx.workDir(), 30);
-            return new ToolResult(output, false);
+            boolean isError = output.startsWith("[BLOCKED]") || output.startsWith("[TIMEOUT]");
+            return new ToolResult(output, isError);
         } catch (Exception e) {
             return new ToolResult(e.getMessage(), true);
         }

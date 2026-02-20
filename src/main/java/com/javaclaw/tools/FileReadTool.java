@@ -28,8 +28,12 @@ public class FileReadTool implements Tool {
     @Override
     public ToolResult execute(ToolContext ctx, JsonNode input) {
         try {
-            var path = Path.of(ctx.workDir(), input.get("path").asText());
-            return new ToolResult(Files.readString(path), false);
+            var base = Path.of(ctx.workDir()).toAbsolutePath().normalize();
+            var target = base.resolve(input.get("path").asText()).normalize();
+            if (!target.startsWith(base)) {
+                return new ToolResult("Path escapes working directory", true);
+            }
+            return new ToolResult(Files.readString(target), false);
         } catch (Exception e) {
             return new ToolResult(e.getMessage(), true);
         }

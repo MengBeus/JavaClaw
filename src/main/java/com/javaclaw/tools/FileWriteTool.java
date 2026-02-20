@@ -29,11 +29,15 @@ public class FileWriteTool implements Tool {
     @Override
     public ToolResult execute(ToolContext ctx, JsonNode input) {
         try {
-            var path = Path.of(ctx.workDir(), input.get("path").asText());
+            var base = Path.of(ctx.workDir()).toAbsolutePath().normalize();
+            var target = base.resolve(input.get("path").asText()).normalize();
+            if (!target.startsWith(base)) {
+                return new ToolResult("Path escapes working directory", true);
+            }
             var content = input.get("content").asText();
-            Files.createDirectories(path.getParent());
-            Files.writeString(path, content);
-            return new ToolResult("Written to " + path, false);
+            Files.createDirectories(target.getParent());
+            Files.writeString(target, content);
+            return new ToolResult("Written to " + target, false);
         } catch (Exception e) {
             return new ToolResult(e.getMessage(), true);
         }

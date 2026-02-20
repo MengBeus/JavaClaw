@@ -19,12 +19,12 @@ public class DockerExecutor implements ToolExecutor {
                     "ubuntu:22.04", "bash", "-c", command);
             pb.redirectErrorStream(true);
             var proc = pb.start();
-            var output = new String(proc.getInputStream().readAllBytes());
             if (!proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 proc.destroyForcibly();
+                proc.waitFor(5, TimeUnit.SECONDS);
                 return "[TIMEOUT] Command exceeded " + timeoutSeconds + "s";
             }
-            return output;
+            return new String(proc.getInputStream().readAllBytes());
         } catch (Exception e) {
             throw new RuntimeException("Docker execution failed", e);
         }

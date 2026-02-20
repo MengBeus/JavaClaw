@@ -12,6 +12,8 @@ import com.javaclaw.channels.TelegramAdapter;
 import com.javaclaw.channels.DiscordAdapter;
 import com.javaclaw.auth.PairingService;
 import com.javaclaw.auth.WhitelistService;
+import com.javaclaw.memory.EmbeddingService;
+import com.javaclaw.memory.LuceneMemoryStore;
 import com.javaclaw.observability.CostTracker;
 import com.javaclaw.observability.DoctorCommand;
 import com.javaclaw.providers.DeepSeekProvider;
@@ -25,6 +27,8 @@ import com.javaclaw.shared.model.AgentRequest;
 import com.javaclaw.shared.model.OutboundMessage;
 import com.javaclaw.tools.FileReadTool;
 import com.javaclaw.tools.FileWriteTool;
+import com.javaclaw.tools.MemoryRecallTool;
+import com.javaclaw.tools.MemoryStoreTool;
 import com.javaclaw.tools.ShellTool;
 import com.javaclaw.tools.ToolRegistry;
 import org.slf4j.Logger;
@@ -94,6 +98,21 @@ public class JavaClawApp {
         var costTracker = new CostTracker(dataSource);
         var doctor = new DoctorCommand(dataSource, config.apiKeys().getOrDefault("embedding-base-url", ""));
         var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore, approvalInterceptor, costTracker);
+
+        // Memory
+        var embeddingBaseUrl = config.apiKeys().getOrDefault("embedding-base-url", "http://localhost:11434/v1");
+        var embeddingModel = config.apiKeys().getOrDefault("embedding-model", "nomic-embed-text");
+        var embeddingService = new EmbeddingService(embeddingBaseUrl, apiKey, embeddingModel);
+        var indexPath = System.getProperty("user.home") + "/.javaclaw/index";
+        try {
+            var memoryStore = new LuceneMemoryStore(embeddingService, indexPath);
+            toolRegistry.register(new MemoryStoreTool(memoryStore));
+            toolRegistry.register(new MemoryRecallTool(memoryStore));
+            agent.setMemoryStore(memoryStore);
+            log.info("Memory store enabled at {}", indexPath);
+        } catch (Exception e) {
+            log.warn("Memory store unavailable: {}", e.getMessage());
+        }
 
         // Auth
         var pairingService = new PairingService();

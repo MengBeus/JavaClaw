@@ -1,6 +1,7 @@
 package com.javaclaw.agent;
 
 import com.javaclaw.approval.ApprovalInterceptor;
+import com.javaclaw.memory.MemoryStore;
 import com.javaclaw.observability.CostTracker;
 import com.javaclaw.providers.ModelProvider;
 import com.javaclaw.sessions.SessionStore;
@@ -33,6 +34,10 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
         this.classifier = new Classifier();
         this.sessionStore = sessionStore;
         this.costTracker = costTracker;
+    }
+
+    public void setMemoryStore(MemoryStore memoryStore) {
+        this.agentLoop.setMemoryStore(memoryStore);
     }
 
     @Override

@@ -510,3 +510,25 @@
 - 文件：`src/main/java/com/javaclaw/providers/ChatResponse.java:7`、`src/main/java/com/javaclaw/providers/OpenAiCompatibleProvider.java:76`、`src/main/java/com/javaclaw/agent/AgentLoop.java:51`、`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:50`
 - 说明：`CostTracker.record()` 的 model 参数来自 `provider.id()`（固定值），若同一 provider 动态切 model 则价格映射失效
 - 解决：`ChatResponse` 新增 `model` 字段，`OpenAiCompatibleProvider` 从 API 响应提取实际 model 名，经 `AgentResponse` 穿透到 `DefaultAgentOrchestrator`，`CostTracker` 定价表 key 改回 `deepseek-chat`（API 实际返回值）
+
+---
+
+### Phase 5 Step 3：Agent 集成记忆
+
+**问题 72：Agent 无法主动存取长期记忆**
+
+- 文件：`src/main/java/com/javaclaw/tools/MemoryStoreTool.java`、`src/main/java/com/javaclaw/tools/MemoryRecallTool.java`
+- 说明：Agent 缺少工具调用接口来主动存储和检索记忆
+- 解决：新增 `memory_store` 和 `memory_recall` 两个 Tool，委托 `MemoryStore` 实现
+
+**问题 73：对话上下文未自动关联记忆**
+
+- 文件：`src/main/java/com/javaclaw/agent/AgentLoop.java:48,69,85`
+- 说明：消息进来不会自动召回相关记忆，对话结束不会自动存储
+- 解决：`execute()` 入口先 `recall(userMessage, 3)` 注入 `[Recalled memories]` 上下文；两个返回点调用 `storeMemory()` 将 Q&A 摘要写入长期记忆
+
+**问题 74：记忆模块未接入应用入口**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:103`、`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:38`
+- 说明：`LuceneMemoryStore` 未在启动时创建，memory tools 未注册到 ToolRegistry
+- 解决：JavaClawApp 创建 `EmbeddingService` + `LuceneMemoryStore`，注册 `MemoryStoreTool`/`MemoryRecallTool`，通过 `agent.setMemoryStore()` 注入 AgentLoop

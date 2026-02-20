@@ -2,6 +2,7 @@ package com.javaclaw.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.approval.ApprovalInterceptor;
+import com.javaclaw.memory.MemoryStore;
 import com.javaclaw.providers.ChatRequest;
 import com.javaclaw.providers.ChatResponse;
 import com.javaclaw.providers.ModelProvider;
@@ -26,6 +27,7 @@ public class AgentLoop {
     private final ToolRegistry toolRegistry;
     private final ApprovalInterceptor approvalInterceptor;
     private final String workDir;
+    private MemoryStore memoryStore;
 
     public AgentLoop(ModelProvider provider, PromptBuilder promptBuilder,
                      ToolRegistry toolRegistry, String workDir,
@@ -37,9 +39,24 @@ public class AgentLoop {
         this.approvalInterceptor = approvalInterceptor;
     }
 
+    public void setMemoryStore(MemoryStore memoryStore) {
+        this.memoryStore = memoryStore;
+    }
+
     public AgentResponse execute(String userMessage, List<Map<String, Object>> history,
                                   String sessionId, String channelId, String senderId) {
-        var messages = promptBuilder.build(userMessage, history);
+        // Recall relevant memories and inject as context
+        var enrichedMessage = userMessage;
+        if (memoryStore != null) {
+            var memories = memoryStore.recall(userMessage, 3);
+            if (!memories.isEmpty()) {
+                var sb = new StringBuilder();
+                for (var m : memories) sb.append("- ").append(m.content()).append("\n");
+                enrichedMessage = "[Recalled memories]\n" + sb + "\n[User message]\n" + userMessage;
+            }
+        }
+
+        var messages = promptBuilder.build(enrichedMessage, history);
         var tools = buildToolsDef();
         var allToolCalls = new ArrayList<Map<String, Object>>();
         history.add(Map.of("role", "user", "content", userMessage));
@@ -48,6 +65,7 @@ public class AgentLoop {
             var resp = provider.chat(new ChatRequest(null, messages, 0.7, tools));
             if (!resp.hasToolCalls()) {
                 history.add(Map.of("role", "assistant", "content", resp.content()));
+                storeMemory(userMessage, resp.content(), sessionId);
                 return new AgentResponse(resp.model(), resp.content(), allToolCalls, resp.usage());
             }
             var assistantMsg = buildAssistantMsg(resp);
@@ -63,6 +81,7 @@ public class AgentLoop {
         }
         var finalResp = provider.chat(new ChatRequest(null, messages, 0.7));
         history.add(Map.of("role", "assistant", "content", finalResp.content()));
+        storeMemory(userMessage, finalResp.content(), sessionId);
         return new AgentResponse(finalResp.model(), finalResp.content(), allToolCalls, finalResp.usage());
     }
 
@@ -109,5 +128,11 @@ public class AgentLoop {
         } catch (Exception e) {
             return "[ERROR] " + e.getMessage();
         }
+    }
+
+    private void storeMemory(String userMessage, String assistantReply, String sessionId) {
+        if (memoryStore == null) return;
+        var summary = "Q: " + userMessage + "\nA: " + assistantReply;
+        memoryStore.store(summary, Map.of("sessionId", sessionId != null ? sessionId : ""));
     }
 }

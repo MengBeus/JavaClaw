@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class AgentLoop {
 
@@ -22,17 +23,17 @@ public class AgentLoop {
     private final ModelProvider provider;
     private final PromptBuilder promptBuilder;
     private final ToolRegistry toolRegistry;
-    private final ToolContext toolContext;
+    private final String workDir;
 
     public AgentLoop(ModelProvider provider, PromptBuilder promptBuilder,
-                     ToolRegistry toolRegistry, ToolContext toolContext) {
+                     ToolRegistry toolRegistry, String workDir) {
         this.provider = provider;
         this.promptBuilder = promptBuilder;
         this.toolRegistry = toolRegistry;
-        this.toolContext = toolContext;
+        this.workDir = workDir;
     }
 
-    public AgentResponse execute(String userMessage, List<Map<String, Object>> history) {
+    public AgentResponse execute(String userMessage, List<Map<String, Object>> history, String sessionId) {
         var messages = promptBuilder.build(userMessage, history);
         var tools = buildToolsDef();
         var allToolCalls = new ArrayList<Map<String, Object>>();
@@ -44,7 +45,7 @@ public class AgentLoop {
             }
             messages.add(buildAssistantMsg(resp));
             for (var tc : resp.toolCalls()) {
-                var result = executeTool(tc.name(), tc.arguments());
+                var result = executeTool(tc.name(), tc.arguments(), sessionId);
                 messages.add(Map.of("role", "tool", "tool_call_id", tc.id(), "content", result));
                 allToolCalls.add(Map.of("tool", tc.name(), "input", tc.arguments(), "output", result));
             }
@@ -82,13 +83,15 @@ public class AgentLoop {
         return msg;
     }
 
-    private String executeTool(String name, String argsJson) {
+    private String executeTool(String name, String argsJson, String sessionId) {
+        if (toolRegistry == null) return "[ERROR] No tools registered";
         var tool = toolRegistry.get(name);
         if (tool == null) return "[ERROR] Unknown tool: " + name;
         try {
+            var ctx = new ToolContext(workDir, sessionId, Set.of());
             var input = MAPPER.readTree(argsJson);
-            var result = tool.execute(toolContext, input);
-            return result.output();
+            var result = tool.execute(ctx, input);
+            return result.isError() ? "[ERROR] " + result.output() : result.output();
         } catch (Exception e) {
             return "[ERROR] " + e.getMessage();
         }

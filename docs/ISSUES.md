@@ -470,3 +470,25 @@
 - 文件：`src/main/java/com/javaclaw/observability/DoctorCommand.java`
 - 说明：部署后难以快速排查 PostgreSQL、Embedding 端点、Lucene 索引、Java 版本等依赖状态
 - 解决：`DoctorCommand.run()` 依次检查四项依赖，返回 `[OK]`/`[FAIL]`/`[WARN]` 状态报告
+
+---
+
+### Phase 5 Bug Fixes
+
+**问题 66：CostTracker / DoctorCommand 未接入运行链路**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:49`、`src/main/java/com/javaclaw/gateway/JavaClawApp.java:93,158`
+- 说明：`CostTracker.record()` 无调用点，`DoctorCommand.run()` 无入口触发，功能不可用
+- 解决：`DefaultAgentOrchestrator` 新增 `CostTracker` 构造参数，`run()` 中 LLM 调用后自动记录 usage；JavaClawApp 新增 `/doctor` CLI 命令路由
+
+**问题 67：MemoryStore metadata 契约丢失**
+
+- 文件：`src/main/java/com/javaclaw/memory/LuceneMemoryStore.java:49`、`src/main/java/com/javaclaw/memory/HybridSearcher.java:63`
+- 说明：`store()` 未写入 metadata，`recall()` 固定返回空 metadata，接口契约被违反
+- 解决：`store()` 将 metadata 序列化为 JSON `StoredField("metadata")`；`HybridSearcher` 召回时反序列化还原
+
+**问题 68：memory / observability 模块缺少测试**
+
+- 文件：`src/test/java/com/javaclaw/memory/LuceneMemoryStoreTest.java`、`src/test/java/com/javaclaw/observability/`
+- 说明：新增模块无测试覆盖，回归风险高
+- 解决：新增 10 个测试（LuceneMemoryStoreTest 4、MetricsConfigTest 2、CostTrackerTest 2、DoctorCommandTest 2），总测试数 31→41

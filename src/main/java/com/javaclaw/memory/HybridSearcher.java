@@ -7,6 +7,8 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnFloatVectorQuery;
 import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+
 import java.util.*;
 
 public class HybridSearcher {
@@ -60,7 +62,14 @@ public class HybridSearcher {
                 score += 1.0 / (RRF_K + bm25Ranks.get(id));
             }
             var doc = docMap.get(id);
-            scored.add(new MemoryResult(id, doc.get("content"), score, Map.of()));
+            Map<String, Object> meta = Map.of();
+            var metaJson = doc.get("metadata");
+            if (metaJson != null) {
+                try {
+                    meta = LuceneMemoryStore.MAPPER.readValue(metaJson, new TypeReference<>() {});
+                } catch (Exception ignored) {}
+            }
+            scored.add(new MemoryResult(id, doc.get("content"), score, meta));
         }
 
         scored.sort(Comparator.comparingDouble(MemoryResult::score).reversed());

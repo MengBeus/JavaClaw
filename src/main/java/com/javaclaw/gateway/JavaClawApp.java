@@ -12,6 +12,8 @@ import com.javaclaw.channels.TelegramAdapter;
 import com.javaclaw.channels.DiscordAdapter;
 import com.javaclaw.auth.PairingService;
 import com.javaclaw.auth.WhitelistService;
+import com.javaclaw.observability.CostTracker;
+import com.javaclaw.observability.DoctorCommand;
 import com.javaclaw.providers.DeepSeekProvider;
 import com.javaclaw.providers.OllamaProvider;
 import com.javaclaw.providers.ProviderRouter;
@@ -89,7 +91,9 @@ public class JavaClawApp {
         // Session + Agent
         var dataSource = ctx.getBean(javax.sql.DataSource.class);
         var sessionStore = new PostgresSessionStore(dataSource);
-        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore, approvalInterceptor);
+        var costTracker = new CostTracker(dataSource);
+        var doctor = new DoctorCommand(dataSource, config.apiKeys().getOrDefault("embedding-base-url", ""));
+        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore, approvalInterceptor, costTracker);
 
         // Auth
         var pairingService = new PairingService();
@@ -146,6 +150,12 @@ public class JavaClawApp {
                     }
                     return;
                 }
+            }
+
+            // CLI /doctor 命令
+            if ("cli".equals(adapterId) && "/doctor".equals(msg.content().trim())) {
+                ch.send(new OutboundMessage(msg.channelId(), doctor.run(), Map.of()));
+                return;
             }
 
             // CLI /pair 命令

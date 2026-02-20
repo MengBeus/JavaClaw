@@ -9,6 +9,9 @@ import org.apache.lucene.store.FSDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +20,7 @@ import java.util.*;
 public class LuceneMemoryStore implements MemoryStore {
 
     private static final Logger log = LoggerFactory.getLogger(LuceneMemoryStore.class);
+    static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final EmbeddingService embeddingService;
     private final HybridSearcher hybridSearcher = new HybridSearcher();
@@ -42,6 +46,10 @@ public class LuceneMemoryStore implements MemoryStore {
             var doc = new Document();
             doc.add(new StringField("id", id, Field.Store.YES));
             doc.add(new TextField("content", content, Field.Store.YES));
+
+            if (metadata != null && !metadata.isEmpty()) {
+                doc.add(new StoredField("metadata", MAPPER.writeValueAsString(metadata)));
+            }
 
             var vec = embeddingService.embed(content);
             if (vec != null) {

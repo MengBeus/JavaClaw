@@ -18,13 +18,19 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
     private final String apiKey;
     private final String baseUrl;
     private final String defaultModel;
+    private final Duration requestTimeout;
     private final HttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
 
     protected OpenAiCompatibleProvider(String apiKey, String baseUrl, String defaultModel) {
+        this(apiKey, baseUrl, defaultModel, Duration.ofSeconds(30));
+    }
+
+    protected OpenAiCompatibleProvider(String apiKey, String baseUrl, String defaultModel, Duration requestTimeout) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl.replaceAll("/+$", "");
         this.defaultModel = defaultModel;
+        this.requestTimeout = requestTimeout;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -56,7 +62,7 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
                 .uri(URI.create(baseUrl + "/chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
-                .timeout(Duration.ofSeconds(30))
+                .timeout(requestTimeout)
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
 

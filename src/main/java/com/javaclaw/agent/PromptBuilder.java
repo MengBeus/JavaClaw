@@ -7,7 +7,7 @@ import java.util.Map;
 
 public class PromptBuilder {
 
-    private static final String SYSTEM_PROMPT = "You are JAVAClaw, a helpful AI assistant.";
+    private static final String SYSTEM_PROMPT = "You are JAVAClaw, a helpful AI assistant. Reply in the same language the user uses.";
 
     public List<Map<String, Object>> build(String userMessage, List<Map<String, Object>> history) {
         if (userMessage == null || userMessage.isBlank()) {

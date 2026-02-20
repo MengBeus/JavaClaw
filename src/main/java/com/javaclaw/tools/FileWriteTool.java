@@ -36,6 +36,9 @@ public class FileWriteTool implements Tool {
             if (!target.getParent().toRealPath().startsWith(base)) {
                 return new ToolResult("Path escapes working directory", true);
             }
+            if (Files.exists(target) && !target.toRealPath().startsWith(base)) {
+                return new ToolResult("Target is a symlink escaping working directory", true);
+            }
             Files.writeString(target, content);
             return new ToolResult("Written to " + target, false);
         } catch (Exception e) {

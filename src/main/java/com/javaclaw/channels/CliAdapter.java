@@ -4,14 +4,18 @@ import com.javaclaw.shared.model.InboundMessage;
 import com.javaclaw.shared.model.OutboundMessage;
 
 import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.time.Instant;
 
 public class CliAdapter implements ChannelAdapter {
 
+    private final BufferedReader reader;
     private volatile boolean running;
     private Thread readThread;
     private Runnable onStop;
+
+    public CliAdapter(BufferedReader reader) {
+        this.reader = reader;
+    }
 
     public void onStop(Runnable callback) {
         this.onStop = callback;
@@ -29,7 +33,6 @@ public class CliAdapter implements ChannelAdapter {
     }
 
     private void runLoop(MessageSink sink) {
-        var reader = new BufferedReader(new InputStreamReader(System.in));
         System.out.println("JAVAClaw CLI (type /quit to exit)");
         while (running) {
             System.out.print("> ");

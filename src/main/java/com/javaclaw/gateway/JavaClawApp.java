@@ -24,6 +24,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.Map;
 import java.util.Set;
 
@@ -55,8 +57,9 @@ public class JavaClawApp {
         toolRegistry.register(new FileWriteTool());
 
         // Approval
+        var stdinReader = new BufferedReader(new InputStreamReader(System.in));
         var approvalInterceptor = new ApprovalInterceptor();
-        approvalInterceptor.setDefault(new CliApprovalStrategy());
+        approvalInterceptor.setDefault(new CliApprovalStrategy(stdinReader, System.out));
 
         // Session + Agent
         var sessionStore = new PostgresSessionStore(ctx.getBean(javax.sql.DataSource.class));
@@ -64,7 +67,7 @@ public class JavaClawApp {
 
         // Channel
         var registry = new ChannelRegistry();
-        var cli = new CliAdapter();
+        var cli = new CliAdapter(stdinReader);
         cli.onStop(() -> {
             registry.stopAll();
             ctx.close();

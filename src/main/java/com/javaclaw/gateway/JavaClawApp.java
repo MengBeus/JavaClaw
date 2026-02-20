@@ -1,6 +1,8 @@
 package com.javaclaw.gateway;
 
 import com.javaclaw.agent.DefaultAgentOrchestrator;
+import com.javaclaw.approval.ApprovalInterceptor;
+import com.javaclaw.approval.CliApprovalStrategy;
 import com.javaclaw.channels.ChannelAdapter;
 import com.javaclaw.channels.ChannelRegistry;
 import com.javaclaw.channels.CliAdapter;
@@ -52,9 +54,13 @@ public class JavaClawApp {
         toolRegistry.register(new FileReadTool());
         toolRegistry.register(new FileWriteTool());
 
+        // Approval
+        var approvalInterceptor = new ApprovalInterceptor();
+        approvalInterceptor.setDefault(new CliApprovalStrategy());
+
         // Session + Agent
         var sessionStore = new PostgresSessionStore(ctx.getBean(javax.sql.DataSource.class));
-        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore);
+        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore, approvalInterceptor);
 
         // Channel
         var registry = new ChannelRegistry();

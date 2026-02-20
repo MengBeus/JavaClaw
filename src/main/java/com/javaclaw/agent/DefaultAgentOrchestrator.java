@@ -1,5 +1,6 @@
 package com.javaclaw.agent;
 
+import com.javaclaw.approval.ApprovalInterceptor;
 import com.javaclaw.providers.ModelProvider;
 import com.javaclaw.sessions.SessionStore;
 import com.javaclaw.shared.model.AgentRequest;
@@ -17,8 +18,9 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
     private final SessionStore sessionStore;
 
     public DefaultAgentOrchestrator(ModelProvider provider, ToolRegistry toolRegistry,
-                                    String workDir, SessionStore sessionStore) {
-        this.agentLoop = new AgentLoop(provider, new PromptBuilder(), toolRegistry, workDir);
+                                    String workDir, SessionStore sessionStore,
+                                    ApprovalInterceptor approvalInterceptor) {
+        this.agentLoop = new AgentLoop(provider, new PromptBuilder(), toolRegistry, workDir, approvalInterceptor);
         this.classifier = new Classifier();
         this.sessionStore = sessionStore;
     }
@@ -29,9 +31,9 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
             return new AgentResponse(request.message(), List.of(), Map.of());
         }
         var history = new ArrayList<>(sessionStore.load(request.sessionId()));
-        var response = agentLoop.execute(request.message(), history, request.sessionId());
         var userId = (String) request.context().get("userId");
         var channelId = (String) request.context().get("channelId");
+        var response = agentLoop.execute(request.message(), history, request.sessionId(), channelId);
         sessionStore.save(request.sessionId(), userId, channelId, history);
         return response;
     }

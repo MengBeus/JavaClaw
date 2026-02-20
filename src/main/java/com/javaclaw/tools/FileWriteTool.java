@@ -9,6 +9,9 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
+import com.javaclaw.approval.DangerousOperation;
+
+@DangerousOperation(reason = "Writes files to disk")
 public class FileWriteTool implements Tool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

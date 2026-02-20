@@ -2,8 +2,10 @@ package com.javaclaw.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javaclaw.approval.DangerousOperation;
 import com.javaclaw.security.ToolExecutor;
 
+@DangerousOperation(reason = "Executes arbitrary shell commands")
 public class ShellTool implements Tool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

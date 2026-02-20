@@ -26,6 +26,7 @@ public class PostgresSessionStore implements SessionStore {
             conn.setAutoCommit(false);
             try {
                 upsertSession(conn, sessionId, userId, channelId);
+                lockSession(conn, sessionId);
                 deleteMessages(conn, sessionId);
                 insertMessages(conn, sessionId, messages);
                 conn.commit();
@@ -84,6 +85,13 @@ public class PostgresSessionStore implements SessionStore {
             ps.setString(2, userId);
             ps.setString(3, channelId);
             ps.executeUpdate();
+        }
+    }
+
+    private void lockSession(Connection conn, String sessionId) throws SQLException {
+        try (var ps = conn.prepareStatement("SELECT id FROM sessions WHERE id = ? FOR UPDATE")) {
+            ps.setString(1, sessionId);
+            ps.executeQuery();
         }
     }
 

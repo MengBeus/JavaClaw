@@ -37,21 +37,27 @@ public class AgentLoop {
         var messages = promptBuilder.build(userMessage, history);
         var tools = buildToolsDef();
         var allToolCalls = new ArrayList<Map<String, Object>>();
+        history.add(Map.of("role", "user", "content", userMessage));
 
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
             var resp = provider.chat(new ChatRequest(null, messages, 0.7, tools));
             if (!resp.hasToolCalls()) {
+                history.add(Map.of("role", "assistant", "content", resp.content()));
                 return new AgentResponse(resp.content(), allToolCalls, resp.usage());
             }
-            messages.add(buildAssistantMsg(resp));
+            var assistantMsg = buildAssistantMsg(resp);
+            messages.add(assistantMsg);
+            history.add(assistantMsg);
             for (var tc : resp.toolCalls()) {
                 var result = executeTool(tc.name(), tc.arguments(), sessionId);
-                messages.add(Map.of("role", "tool", "tool_call_id", tc.id(), "content", result));
+                var toolMsg = Map.<String, Object>of("role", "tool", "tool_call_id", tc.id(), "content", result);
+                messages.add(toolMsg);
+                history.add(toolMsg);
                 allToolCalls.add(Map.of("tool", tc.name(), "input", tc.arguments(), "output", result));
             }
         }
-        // max rounds reached — return last LLM call without tools to force final answer
         var finalResp = provider.chat(new ChatRequest(null, messages, 0.7));
+        history.add(Map.of("role", "assistant", "content", finalResp.content()));
         return new AgentResponse(finalResp.content(), allToolCalls, finalResp.usage());
     }
 

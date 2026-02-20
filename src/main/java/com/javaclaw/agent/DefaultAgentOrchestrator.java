@@ -30,9 +30,9 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
         }
         var history = new ArrayList<>(sessionStore.load(request.sessionId()));
         var response = agentLoop.execute(request.message(), history, request.sessionId());
-        history.add(Map.of("role", "user", "content", request.message()));
-        history.add(Map.of("role", "assistant", "content", response.content()));
-        sessionStore.save(request.sessionId(), null, null, history);
+        var userId = (String) request.context().get("userId");
+        var channelId = (String) request.context().get("channelId");
+        sessionStore.save(request.sessionId(), userId, channelId, history);
         return response;
     }
 }

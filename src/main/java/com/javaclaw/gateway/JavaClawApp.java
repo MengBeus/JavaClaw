@@ -67,7 +67,8 @@ public class JavaClawApp {
 
         registry.startAll(msg -> {
             var response = agent.run(new AgentRequest(
-                    msg.senderId(), msg.content(), Map.of()));
+                    msg.senderId(), msg.content(),
+                    Map.of("userId", msg.senderId(), "channelId", msg.channelId())));
             ChannelAdapter ch = registry.get(msg.channelId());
             if (ch != null) {
                 ch.send(new OutboundMessage(msg.channelId(), response.content(), Map.of()));

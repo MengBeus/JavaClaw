@@ -34,12 +34,17 @@ public class RestrictedNativeExecutor implements ToolExecutor {
             if (workDir != null) pb.directory(new File(workDir));
             pb.redirectErrorStream(true);
             var proc = pb.start();
+            var stdout = new java.io.ByteArrayOutputStream();
+            var reader = Thread.startVirtualThread(() -> {
+                try { proc.getInputStream().transferTo(stdout); } catch (Exception ignored) {}
+            });
             if (!proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 proc.destroyForcibly();
-                proc.waitFor(5, TimeUnit.SECONDS);
+                reader.join(5000);
                 return "[TIMEOUT] Command exceeded " + timeoutSeconds + "s";
             }
-            return new String(proc.getInputStream().readAllBytes());
+            reader.join(5000);
+            return stdout.toString();
         } catch (Exception e) {
             throw new RuntimeException("Native execution failed", e);
         }

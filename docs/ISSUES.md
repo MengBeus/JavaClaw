@@ -320,3 +320,23 @@
 - 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:52、62`
 - 说明：executor 选择和 Tier 判断各调一次 `docker.isAvailable()`，两次调用间 Docker 状态可能变化，导致执行器用了 Docker 但审批走了无沙箱分支，或反过来
 - 解决：首次调用结果缓存到 `dockerAvailable` 变量，后续统一复用
+
+### 集成测试
+
+**问题 44：集成脚本对运行环境假设较强**
+
+- 文件：`scripts/phase2-verify.sh:1,24`、`scripts/phase3-verify.sh:1,25,64`
+- 说明：脚本依赖 bash + mkfifo，phase3 还依赖 psql，非 Bash 环境（纯 Windows cmd）无法运行
+- 解决：脚本入口加前置检查，缺少命令时立即报错退出
+
+**问题 45：FileReadToolTest 路径穿越断言力度偏弱**
+
+- 文件：`src/test/java/com/javaclaw/tools/FileReadToolTest.java:34`
+- 说明：原用例用不存在的 `../../etc/passwd`，`toRealPath()` 直接抛异常走 catch 分支，isError=true 是因为文件不存在而非边界拦截
+- 解决：在 tempDir 外创建真实文件，穿越读取时断言错误消息包含 "Path escapes working directory"
+
+**问题 46：phase3-verify.sh 表检查未限定 schema**
+
+- 文件：`scripts/phase3-verify.sh:65,74`
+- 说明：只按 table_name 查 information_schema.tables，同名表在其他 schema 也会误判通过
+- 解决：SQL 加 `table_schema='public'` 条件

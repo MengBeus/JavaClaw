@@ -72,6 +72,7 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
     private ChatResponse parseResponse(JsonNode root) {
         var choice = root.path("choices").path(0).path("message");
         var content = choice.path("content").asText(null);
+        var model = root.path("model").asText(null);
         var u = root.path("usage");
         var usage = Map.of(
                 "promptTokens", u.path("prompt_tokens").asInt(0),
@@ -88,6 +89,6 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
                         fn.path("arguments").asText("")));
             }
         }
-        return new ChatResponse(content != null ? content : "", usage, toolCalls);
+        return new ChatResponse(model, content != null ? content : "", usage, toolCalls);
     }
 }

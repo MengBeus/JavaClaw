@@ -48,7 +48,7 @@ public class AgentLoop {
             var resp = provider.chat(new ChatRequest(null, messages, 0.7, tools));
             if (!resp.hasToolCalls()) {
                 history.add(Map.of("role", "assistant", "content", resp.content()));
-                return new AgentResponse(resp.content(), allToolCalls, resp.usage());
+                return new AgentResponse(resp.model(), resp.content(), allToolCalls, resp.usage());
             }
             var assistantMsg = buildAssistantMsg(resp);
             messages.add(assistantMsg);
@@ -63,7 +63,7 @@ public class AgentLoop {
         }
         var finalResp = provider.chat(new ChatRequest(null, messages, 0.7));
         history.add(Map.of("role", "assistant", "content", finalResp.content()));
-        return new AgentResponse(finalResp.content(), allToolCalls, finalResp.usage());
+        return new AgentResponse(finalResp.model(), finalResp.content(), allToolCalls, finalResp.usage());
     }
 
     private List<Map<String, Object>> buildToolsDef() {

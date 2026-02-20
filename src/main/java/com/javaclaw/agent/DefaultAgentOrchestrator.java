@@ -18,7 +18,6 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
     private final Classifier classifier;
     private final SessionStore sessionStore;
     private final CostTracker costTracker;
-    private final String modelId;
 
     public DefaultAgentOrchestrator(ModelProvider provider, ToolRegistry toolRegistry,
                                     String workDir, SessionStore sessionStore,
@@ -34,7 +33,6 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
         this.classifier = new Classifier();
         this.sessionStore = sessionStore;
         this.costTracker = costTracker;
-        this.modelId = provider.id();
     }
 
     @Override
@@ -49,7 +47,8 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
         var response = agentLoop.execute(request.message(), history, request.sessionId(), channelId, userId);
         sessionStore.save(request.sessionId(), userId, channelId, history);
         if (costTracker != null && response.usage() != null) {
-            costTracker.record(request.sessionId(), modelId, modelId,
+            var model = response.model() != null ? response.model() : "unknown";
+            costTracker.record(request.sessionId(), model, model,
                     response.usage().getOrDefault("promptTokens", 0),
                     response.usage().getOrDefault("completionTokens", 0));
         }

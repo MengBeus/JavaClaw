@@ -16,7 +16,7 @@ public class CostTracker {
 
     // price per 1M tokens (USD)
     private static final Map<String, double[]> PRICING = Map.of(
-            "deepseek-v3", new double[]{0.14, 0.28},
+            "deepseek-chat", new double[]{0.14, 0.28},
             "qwen3:4b", new double[]{0.0, 0.0}
     );
 

@@ -504,3 +504,9 @@
 - 文件：`src/main/java/com/javaclaw/observability/CostTracker.java:19`
 - 说明：定价表 key 为 `deepseek-chat`，但 `DeepSeekProvider.id()` 返回 `deepseek-v3`，导致按 0 价格记账
 - 解决：定价表 key 改为 `deepseek-v3`
+
+**问题 71：计费按 provider.id() 记 model，无法适应同 provider 多 model 场景**
+
+- 文件：`src/main/java/com/javaclaw/providers/ChatResponse.java:7`、`src/main/java/com/javaclaw/providers/OpenAiCompatibleProvider.java:76`、`src/main/java/com/javaclaw/agent/AgentLoop.java:51`、`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:50`
+- 说明：`CostTracker.record()` 的 model 参数来自 `provider.id()`（固定值），若同一 provider 动态切 model 则价格映射失效
+- 解决：`ChatResponse` 新增 `model` 字段，`OpenAiCompatibleProvider` 从 API 响应提取实际 model 名，经 `AgentResponse` 穿透到 `DefaultAgentOrchestrator`，`CostTracker` 定价表 key 改回 `deepseek-chat`（API 实际返回值）

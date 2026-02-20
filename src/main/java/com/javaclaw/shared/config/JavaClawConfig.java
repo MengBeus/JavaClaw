@@ -9,5 +9,7 @@ public record JavaClawConfig(
     List<String> fallbackProviders,
     Map<String, String> database,
     Map<String, String> apiKeys,
-    boolean allowNativeFallback
+    boolean allowNativeFallback,
+    String telegramBotToken,
+    String discordBotToken
 ) {}

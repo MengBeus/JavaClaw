@@ -6,6 +6,10 @@ import com.javaclaw.approval.CliApprovalStrategy;
 import com.javaclaw.channels.ChannelAdapter;
 import com.javaclaw.channels.ChannelRegistry;
 import com.javaclaw.channels.CliAdapter;
+import com.javaclaw.channels.TelegramAdapter;
+import com.javaclaw.channels.DiscordAdapter;
+import com.javaclaw.auth.PairingService;
+import com.javaclaw.auth.WhitelistService;
 import com.javaclaw.providers.DeepSeekProvider;
 import com.javaclaw.providers.OllamaProvider;
 import com.javaclaw.providers.ProviderRouter;
@@ -81,26 +85,75 @@ public class JavaClawApp {
         }
 
         // Session + Agent
-        var sessionStore = new PostgresSessionStore(ctx.getBean(javax.sql.DataSource.class));
+        var dataSource = ctx.getBean(javax.sql.DataSource.class);
+        var sessionStore = new PostgresSessionStore(dataSource);
         var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore, approvalInterceptor);
+
+        // Auth
+        var pairingService = new PairingService();
+        var whitelist = new WhitelistService(dataSource);
 
         // Channel
         var registry = new ChannelRegistry();
         var cli = new CliAdapter(stdinReader);
         cli.onStop(() -> {
-            registry.stopAll();
-            ctx.close();
+            registry.unregister(cli.id());
+            if (registry.allStopped()) {
+                ctx.close();
+            }
         });
         registry.register(cli);
 
+        // Telegram（配置了 bot-token 才启动）
+        var telegramToken = config.telegramBotToken();
+        if (telegramToken != null && !telegramToken.isBlank()) {
+            registry.register(new TelegramAdapter(telegramToken));
+            log.info("Telegram channel enabled");
+        }
+
+        // Discord（配置了 bot-token 才启动）
+        var discordToken = config.discordBotToken();
+        if (discordToken != null && !discordToken.isBlank()) {
+            registry.register(new DiscordAdapter(discordToken));
+            log.info("Discord channel enabled");
+        }
+
         registry.startAll(msg -> {
+            var adapterId = msg.channelId().split(":")[0];
+            ChannelAdapter ch = registry.get(adapterId);
+            if (ch == null) return;
+
+            // CLI 跳过认证；远程通道需要白名单
+            if (!"cli".equals(adapterId)) {
+                if (!whitelist.isWhitelisted(msg.senderId(), adapterId)) {
+                    // 未授权用户：尝试配对码
+                    if (msg.content().matches("\\d{6}")) {
+                        if (pairingService.consumeCode(msg.content().trim(), adapterId)) {
+                            whitelist.add(msg.senderId(), adapterId);
+                            ch.send(new OutboundMessage(msg.channelId(), "配对成功，已加入白名单。", Map.of()));
+                        } else {
+                            ch.send(new OutboundMessage(msg.channelId(), "配对码无效或已过期。", Map.of()));
+                        }
+                    } else {
+                        ch.send(new OutboundMessage(msg.channelId(),
+                                "未授权。请先在 CLI 执行 /pair " + adapterId + " 获取配对码，然后发送到此对话。", Map.of()));
+                    }
+                    return;
+                }
+            }
+
+            // CLI /pair 命令
+            if ("cli".equals(adapterId) && msg.content().startsWith("/pair ")) {
+                var target = msg.content().substring(6).trim();
+                var code = pairingService.generateCode(target);
+                ch.send(new OutboundMessage(msg.channelId(), "配对码: " + code + " (请在 " + target + " 中发送此码)", Map.of()));
+                return;
+            }
+
             var response = agent.run(new AgentRequest(
                     msg.senderId(), msg.content(),
                     Map.of("userId", msg.senderId(), "channelId", msg.channelId())));
-            ChannelAdapter ch = registry.get(msg.channelId());
-            if (ch != null) {
-                ch.send(new OutboundMessage(msg.channelId(), response.content(), Map.of()));
-            }
+            ch.send(new OutboundMessage(msg.channelId(), response.content(), Map.of()));
         });
     }
 }

@@ -340,3 +340,59 @@
 - 文件：`scripts/phase3-verify.sh:65,74`
 - 说明：只按 table_name 查 information_schema.tables，同名表在其他 schema 也会误判通过
 - 解决：SQL 加 `table_schema='public'` 条件
+
+---
+
+## Phase 4：消息平台
+
+### Step 1：TelegramAdapter
+
+**问题 47：CLI /quit 关闭整个进程，多通道共存失效**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:92-93`
+- 说明：`onStop` 回调直接 `registry.stopAll()` + `ctx.close()`，CLI 退出时 Telegram 也被停掉
+- 解决：改为 `registry.unregister(cli.id())`，仅当 `registry.allStopped()` 时才关闭 Spring 上下文。ChannelRegistry 新增 `unregister()` 和 `allStopped()` 方法
+
+**问题 48：Telegram 匿名管理员消息触发 NPE**
+
+- 文件：`src/main/java/com/javaclaw/channels/TelegramAdapter.java:52`
+- 说明：`msg.getFrom().getId()` 在匿名管理员/系统消息时 `getFrom()` 返回 null，NPE 打断消费线程
+- 解决：`consume()` 入口增加 `if (msg.getFrom() == null) return;`
+
+**问题 49：Telegram 启动失败被吞掉，假上线**
+
+- 文件：`src/main/java/com/javaclaw/channels/TelegramAdapter.java:43-45`
+- 说明：`catch` 只记日志不抛出，JavaClawApp 已注册 adapter 并打印 enabled，实际未成功 long polling
+- 解决：改为 `throw new RuntimeException("Failed to start Telegram bot", e)`
+
+**问题 50：ChannelRegistry 并发读写数据竞争**
+
+- 文件：`src/main/java/com/javaclaw/channels/ChannelRegistry.java:8`
+- 说明：`LinkedHashMap` 无同步保护，`unregister()` 写操作与消息处理路径的 `get()` 读操作并发，行为未定义
+- 解决：`LinkedHashMap` 改为 `ConcurrentHashMap`
+
+### Step 3：auth（配对认证 + 白名单）
+
+**问题 51：配对码未校验目标通道，跨通道配对漏洞**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:130-132`
+- 说明：`consumeCode()` 返回的 channel 未与当前 adapterId 比对，给 discord 生成的码能在 telegram 使用
+- 解决：`consumeCode` 改为 `consumeCode(code, expectedChannel)`，内部用 `ConcurrentHashMap.remove(key, value)` 原子校验通道匹配
+
+**问题 52：已授权用户发送纯 6 位数字消息被吞**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:129`
+- 说明：所有非 CLI 消息先拦截 `\d{6}`，已授权用户发"123456"也走配对分支并 return，正常业务消息丢失
+- 解决：逻辑重构为先查白名单，已授权用户直接放行；只有未授权用户的消息才进入配对码判断
+
+**问题 53：配对码碰撞覆盖，旧码静默失效**
+
+- 文件：`src/main/java/com/javaclaw/auth/PairingService.java:14-15`
+- 说明：随机 6 位码直接 `put`，未检测已存在，小概率覆盖他人待消费码
+- 解决：改为 `putIfAbsent` + 循环重试，确保不覆盖
+
+**问题 54：配对码在通道不匹配时也被消费**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:131-132`
+- 说明：先 `consumeCode()` 移除码，再校验 channel，通道不匹配时码已被删除，正确平台无法再用
+- 解决：`PairingService.consumeCode(code, expectedChannel)` 用 `ConcurrentHashMap.remove(key, value)` 原子操作，不匹配时不消费

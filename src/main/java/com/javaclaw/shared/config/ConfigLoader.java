@@ -36,6 +36,8 @@ public class ConfigLoader {
         var db = (Map<String, Object>) raw.getOrDefault("database", Map.of());
         var keys = (Map<String, Object>) raw.getOrDefault("api-keys", Map.of());
         var sandbox = (Map<String, Object>) raw.getOrDefault("sandbox", Map.of());
+        var telegram = (Map<String, Object>) raw.getOrDefault("telegram", Map.of());
+        var discord = (Map<String, Object>) raw.getOrDefault("discord", Map.of());
 
         var apiKeys = new java.util.HashMap<String, String>();
         keys.forEach((k, v) -> apiKeys.put(k, String.valueOf(v)));
@@ -54,7 +56,11 @@ public class ConfigLoader {
                     (String) db.getOrDefault("password", "javaclaw"))
             ),
             apiKeys,
-            Boolean.TRUE.equals(sandbox.getOrDefault("allow-native-fallback", false))
+            Boolean.TRUE.equals(sandbox.getOrDefault("allow-native-fallback", false)),
+            envOrDefault("JAVACLAW_TELEGRAM_TOKEN",
+                (String) telegram.getOrDefault("bot-token", "")),
+            envOrDefault("JAVACLAW_DISCORD_TOKEN",
+                (String) discord.getOrDefault("bot-token", ""))
         );
     }
 

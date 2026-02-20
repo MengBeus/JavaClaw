@@ -15,3 +15,9 @@ database:
 api-keys:
   deepseek: your-deepseek-api-key
   openai: your-openai-api-key
+
+telegram:
+  bot-token: your-telegram-bot-token
+
+discord:
+  bot-token: your-discord-bot-token

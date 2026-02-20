@@ -1,11 +1,11 @@
 package com.javaclaw.channels;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ChannelRegistry {
 
-    private final Map<String, ChannelAdapter> adapters = new LinkedHashMap<>();
+    private final Map<String, ChannelAdapter> adapters = new ConcurrentHashMap<>();
 
     public void register(ChannelAdapter adapter) {
         if (adapters.containsKey(adapter.id())) {
@@ -24,5 +24,13 @@ public class ChannelRegistry {
 
     public void stopAll() {
         adapters.values().forEach(ChannelAdapter::stop);
+    }
+
+    public void unregister(String id) {
+        adapters.remove(id);
+    }
+
+    public boolean allStopped() {
+        return adapters.isEmpty();
     }
 }

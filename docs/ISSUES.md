@@ -251,3 +251,26 @@
 - 解决：新增最小测试集：
   - `FileWriteToolTest`：验证工作目录内正常写入、越界路径被拒且不会产生目录副作用。
   - `ShellToolTest`：验证非 0 退出码标记 `isError=true`，0 退出码标记 `isError=false`。
+
+### Step 2：Agent 支持 tool_call 多轮循环
+
+**问题 35：ToolContext.sessionId 固定为 null**
+
+- 文件：`src/main/java/com/javaclaw/agent/DefaultAgentOrchestrator.java:22`
+- 说明：ToolContext 在构造函数中一次性创建 `new ToolContext(workDir, null, Set.of())`，sessionId 写死 null。后续每次 `run()` 都复用同一个上下文，工具拿不到真实会话 ID
+- 根因：生命周期错配——ToolContext 是请求粒度数据，却在应用启动粒度构造
+- 解决：AgentLoop 只存 workDir，`execute()` 接收 sessionId 参数，`executeTool()` 内部按需构建 ToolContext
+
+**问题 36：工具执行失败状态在 AgentLoop 中丢失**
+
+- 文件：`src/main/java/com/javaclaw/agent/AgentLoop.java:90-91`
+- 说明：`executeTool()` 只返回 `result.output()`，`ToolResult.isError` 被丢弃。LLM 只看到文本，无法区分成功与失败，会把错误结果当正常输出继续推理
+- 根因：信息在层间传递时被截断，只传了文本没传状态
+- 解决：`isError()` 为 true 时统一加 `[ERROR] ` 前缀，让 LLM 明确识别失败
+
+**问题 37：executeTool() 对 toolRegistry 缺少判空**
+
+- 文件：`src/main/java/com/javaclaw/agent/AgentLoop.java:58、86`
+- 说明：`buildToolsDef()` 对 `toolRegistry == null` 做了处理（不发工具定义），但 `executeTool()` 直接调 `toolRegistry.get(name)`。LLM 行为不可控，若仍返回 tool_call 则 NPE
+- 根因：防御逻辑只做了一半，未在每个消费点校验外部输入
+- 解决：`executeTool()` 入口增加 `toolRegistry == null` 检查，返回 `[ERROR] No tools registered`

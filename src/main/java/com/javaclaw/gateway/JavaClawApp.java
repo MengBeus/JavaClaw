@@ -9,6 +9,7 @@ import com.javaclaw.providers.ProviderRouter;
 import com.javaclaw.shared.config.ConfigLoader;
 import com.javaclaw.security.DockerExecutor;
 import com.javaclaw.security.RestrictedNativeExecutor;
+import com.javaclaw.sessions.PostgresSessionStore;
 import com.javaclaw.shared.model.AgentRequest;
 import com.javaclaw.shared.model.OutboundMessage;
 import com.javaclaw.tools.FileReadTool;
@@ -51,8 +52,9 @@ public class JavaClawApp {
         toolRegistry.register(new FileReadTool());
         toolRegistry.register(new FileWriteTool());
 
-        // Agent
-        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir);
+        // Session + Agent
+        var sessionStore = new PostgresSessionStore(ctx.getBean(javax.sql.DataSource.class));
+        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore);
 
         // Channel
         var registry = new ChannelRegistry();

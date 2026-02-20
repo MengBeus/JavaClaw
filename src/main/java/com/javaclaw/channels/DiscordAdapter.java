@@ -1,10 +1,12 @@
 package com.javaclaw.channels;
 
+import com.javaclaw.approval.DiscordApprovalStrategy;
 import com.javaclaw.shared.model.InboundMessage;
 import com.javaclaw.shared.model.OutboundMessage;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
@@ -21,9 +23,18 @@ public class DiscordAdapter extends ListenerAdapter implements ChannelAdapter {
     private final String botToken;
     private JDA jda;
     private MessageSink sink;
+    private DiscordApprovalStrategy approvalStrategy;
 
     public DiscordAdapter(String botToken) {
         this.botToken = botToken;
+    }
+
+    public JDA getJda() {
+        return jda;
+    }
+
+    public void setApprovalStrategy(DiscordApprovalStrategy strategy) {
+        this.approvalStrategy = strategy;
     }
 
     @Override
@@ -58,7 +69,15 @@ public class DiscordAdapter extends ListenerAdapter implements ChannelAdapter {
         var content = message.getContentDisplay();
         var senderId = event.getAuthor().getId();
         var channelId = event.getChannel().getId();
-        sink.accept(new InboundMessage(senderId, "discord:" + channelId, content, Instant.now()));
+        var inbound = new InboundMessage(senderId, "discord:" + channelId, content, Instant.now());
+        Thread.startVirtualThread(() -> sink.accept(inbound));
+    }
+
+    @Override
+    public void onButtonInteraction(ButtonInteractionEvent event) {
+        if (approvalStrategy != null) {
+            approvalStrategy.handleButtonInteraction(event);
+        }
     }
 
     @Override

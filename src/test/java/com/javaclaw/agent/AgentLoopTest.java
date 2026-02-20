@@ -32,7 +32,7 @@ class AgentLoopTest {
         var provider = stubProvider(new ChatResponse("hello", Map.of()));
         var loop = new AgentLoop(provider, new PromptBuilder(), null, "/tmp", null);
 
-        var result = loop.execute("hi", new ArrayList<>(), "s1", "cli");
+        var result = loop.execute("hi", new ArrayList<>(), "s1", "cli", "user1");
 
         assertEquals("hello", result.content());
         assertTrue(result.toolCalls().isEmpty());
@@ -51,7 +51,7 @@ class AgentLoopTest {
         registry.register(new EchoTool());
 
         var loop = new AgentLoop(provider, new PromptBuilder(), registry, "/tmp", null);
-        var result = loop.execute("say world", new ArrayList<>(), "s1", "cli");
+        var result = loop.execute("say world", new ArrayList<>(), "s1", "cli", "user1");
 
         assertEquals("got it: world", result.content());
         assertEquals(1, result.toolCalls().size());
@@ -71,10 +71,10 @@ class AgentLoopTest {
         registry.register(new EchoTool());
 
         var interceptor = new ApprovalInterceptor();
-        interceptor.setDefault((name, args) -> false);
+        interceptor.setDefault((name, args, chId, sId) -> false);
 
         var loop = new AgentLoop(provider, new PromptBuilder(), registry, "/tmp", interceptor);
-        var result = loop.execute("do it", new ArrayList<>(), "s1", "cli");
+        var result = loop.execute("do it", new ArrayList<>(), "s1", "cli", "user1");
 
         var output = (String) result.toolCalls().get(0).get("output");
         assertTrue(output.startsWith("[DENIED]"));
@@ -94,7 +94,7 @@ class AgentLoopTest {
 
         var history = new ArrayList<Map<String, Object>>();
         var loop = new AgentLoop(provider, new PromptBuilder(), registry, "/tmp", null);
-        loop.execute("test", history, "s1", "cli");
+        loop.execute("test", history, "s1", "cli", "user1");
 
         // history should have: user, assistant(tool_calls), tool, final assistant
         assertEquals(4, history.size());

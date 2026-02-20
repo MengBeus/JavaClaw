@@ -29,36 +29,36 @@ class ApprovalInterceptorTest {
     @Test
     void allowsSafeToolWithoutStrategy() {
         var interceptor = new ApprovalInterceptor();
-        assertTrue(interceptor.check(new SafeTool(), "{}", "cli"));
+        assertTrue(interceptor.check(new SafeTool(), "{}", "cli", "u1"));
     }
 
     @Test
     void deniesDangerousToolWhenNoStrategy() {
         var interceptor = new ApprovalInterceptor();
-        assertFalse(interceptor.check(new DangerousTool(), "{}", "cli"));
+        assertFalse(interceptor.check(new DangerousTool(), "{}", "cli", "u1"));
     }
 
     @Test
     void approvesDangerousToolWhenStrategyReturnsTrue() {
         var interceptor = new ApprovalInterceptor();
-        interceptor.setDefault((name, args) -> true);
-        assertTrue(interceptor.check(new DangerousTool(), "{}", "cli"));
+        interceptor.setDefault((name, args, chId, sId) -> true);
+        assertTrue(interceptor.check(new DangerousTool(), "{}", "cli", "u1"));
     }
 
     @Test
     void deniesDangerousToolWhenStrategyReturnsFalse() {
         var interceptor = new ApprovalInterceptor();
-        interceptor.setDefault((name, args) -> false);
-        assertFalse(interceptor.check(new DangerousTool(), "{}", "cli"));
+        interceptor.setDefault((name, args, chId, sId) -> false);
+        assertFalse(interceptor.check(new DangerousTool(), "{}", "cli", "u1"));
     }
 
     @Test
     void usesChannelSpecificStrategy() {
         var interceptor = new ApprovalInterceptor();
-        interceptor.setDefault((name, args) -> false);
-        interceptor.register("special", (name, args) -> true);
+        interceptor.setDefault((name, args, chId, sId) -> false);
+        interceptor.register("special", (name, args, chId, sId) -> true);
 
-        assertFalse(interceptor.check(new DangerousTool(), "{}", "cli"));
-        assertTrue(interceptor.check(new DangerousTool(), "{}", "special"));
+        assertFalse(interceptor.check(new DangerousTool(), "{}", "cli", "u1"));
+        assertTrue(interceptor.check(new DangerousTool(), "{}", "special", "u1"));
     }
 }

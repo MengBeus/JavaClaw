@@ -3,6 +3,8 @@ package com.javaclaw.gateway;
 import com.javaclaw.agent.DefaultAgentOrchestrator;
 import com.javaclaw.approval.ApprovalInterceptor;
 import com.javaclaw.approval.CliApprovalStrategy;
+import com.javaclaw.approval.TelegramApprovalStrategy;
+import com.javaclaw.approval.DiscordApprovalStrategy;
 import com.javaclaw.channels.ChannelAdapter;
 import com.javaclaw.channels.ChannelRegistry;
 import com.javaclaw.channels.CliAdapter;
@@ -69,7 +71,7 @@ public class JavaClawApp {
         var approvalInterceptor = new ApprovalInterceptor();
         if (dockerAvailable) {
             // Tier 1: Docker 沙箱可用，危险工具自动放行
-            approvalInterceptor.setDefault((name, arguments) -> true);
+            approvalInterceptor.setDefault((name, arguments, chId, sId) -> true);
         } else if (config.allowNativeFallback()) {
             // Tier 2: 无 Docker + 配置了 allow-native-fallback，走正常审批
             log.warn("Docker unavailable, dangerous tools will require explicit approval");
@@ -78,9 +80,9 @@ public class JavaClawApp {
             // Tier 3: 无 Docker + 未配置，审批时额外警告无沙箱保护
             log.warn("Docker unavailable, dangerous tools will require explicit approval");
             var cliStrategy = new CliApprovalStrategy(stdinReader, System.out);
-            approvalInterceptor.setDefault((name, arguments) -> {
+            approvalInterceptor.setDefault((name, arguments, chId, sId) -> {
                 System.out.println("[无沙箱保护] 当前无 Docker 沙箱，命令将直接在宿主机执行");
-                return cliStrategy.approve(name, arguments);
+                return cliStrategy.approve(name, arguments, chId, sId);
             });
         }
 
@@ -105,16 +107,20 @@ public class JavaClawApp {
         registry.register(cli);
 
         // Telegram（配置了 bot-token 才启动）
+        TelegramAdapter telegramAdapter = null;
         var telegramToken = config.telegramBotToken();
         if (telegramToken != null && !telegramToken.isBlank()) {
-            registry.register(new TelegramAdapter(telegramToken));
+            telegramAdapter = new TelegramAdapter(telegramToken);
+            registry.register(telegramAdapter);
             log.info("Telegram channel enabled");
         }
 
         // Discord（配置了 bot-token 才启动）
+        DiscordAdapter discordAdapter = null;
         var discordToken = config.discordBotToken();
         if (discordToken != null && !discordToken.isBlank()) {
-            registry.register(new DiscordAdapter(discordToken));
+            discordAdapter = new DiscordAdapter(discordToken);
+            registry.register(discordAdapter);
             log.info("Discord channel enabled");
         }
 
@@ -155,5 +161,19 @@ public class JavaClawApp {
                     Map.of("userId", msg.senderId(), "channelId", msg.channelId())));
             ch.send(new OutboundMessage(msg.channelId(), response.content(), Map.of()));
         });
+
+        // Channel-specific approval strategies (only when no Docker sandbox)
+        if (!dockerAvailable) {
+            if (telegramAdapter != null) {
+                var tgStrategy = new TelegramApprovalStrategy(telegramAdapter.getTelegramClient());
+                telegramAdapter.setApprovalStrategy(tgStrategy);
+                approvalInterceptor.register("telegram", tgStrategy);
+            }
+            if (discordAdapter != null) {
+                var dcStrategy = new DiscordApprovalStrategy(discordAdapter.getJda());
+                discordAdapter.setApprovalStrategy(dcStrategy);
+                approvalInterceptor.register("discord", dcStrategy);
+            }
+        }
     }
 }

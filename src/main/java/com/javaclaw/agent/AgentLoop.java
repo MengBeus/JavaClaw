@@ -38,7 +38,7 @@ public class AgentLoop {
     }
 
     public AgentResponse execute(String userMessage, List<Map<String, Object>> history,
-                                  String sessionId, String channelId) {
+                                  String sessionId, String channelId, String senderId) {
         var messages = promptBuilder.build(userMessage, history);
         var tools = buildToolsDef();
         var allToolCalls = new ArrayList<Map<String, Object>>();
@@ -54,7 +54,7 @@ public class AgentLoop {
             messages.add(assistantMsg);
             history.add(assistantMsg);
             for (var tc : resp.toolCalls()) {
-                var result = executeTool(tc.name(), tc.arguments(), sessionId, channelId);
+                var result = executeTool(tc.name(), tc.arguments(), sessionId, channelId, senderId);
                 var toolMsg = Map.<String, Object>of("role", "tool", "tool_call_id", tc.id(), "content", result);
                 messages.add(toolMsg);
                 history.add(toolMsg);
@@ -94,11 +94,11 @@ public class AgentLoop {
         return msg;
     }
 
-    private String executeTool(String name, String argsJson, String sessionId, String channelId) {
+    private String executeTool(String name, String argsJson, String sessionId, String channelId, String senderId) {
         if (toolRegistry == null) return "[ERROR] No tools registered";
         var tool = toolRegistry.get(name);
         if (tool == null) return "[ERROR] Unknown tool: " + name;
-        if (approvalInterceptor != null && !approvalInterceptor.check(tool, argsJson, channelId)) {
+        if (approvalInterceptor != null && !approvalInterceptor.check(tool, argsJson, channelId, senderId)) {
             return "[DENIED] Tool '" + name + "' was not approved";
         }
         try {

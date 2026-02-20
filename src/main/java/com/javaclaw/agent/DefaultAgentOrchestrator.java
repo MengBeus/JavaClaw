@@ -34,7 +34,7 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
         var ctx = request.context() != null ? request.context() : Map.<String, Object>of();
         var userId = (String) ctx.get("userId");
         var channelId = (String) ctx.get("channelId");
-        var response = agentLoop.execute(request.message(), history, request.sessionId(), channelId);
+        var response = agentLoop.execute(request.message(), history, request.sessionId(), channelId, userId);
         sessionStore.save(request.sessionId(), userId, channelId, history);
         return response;
     }

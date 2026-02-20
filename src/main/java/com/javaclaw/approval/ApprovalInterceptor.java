@@ -18,12 +18,18 @@ public class ApprovalInterceptor {
         this.defaultStrategy = strategy;
     }
 
-    public boolean check(Tool tool, String arguments, String channelId) {
+    public boolean check(Tool tool, String arguments, String channelId, String senderId) {
         if (!tool.getClass().isAnnotationPresent(DangerousOperation.class)) {
             return true;
         }
-        var strategy = strategies.getOrDefault(channelId, defaultStrategy);
+        var strategy = strategies.get(channelId);
+        if (strategy == null) {
+            strategy = strategies.get(channelId.split(":")[0]);
+        }
+        if (strategy == null) {
+            strategy = defaultStrategy;
+        }
         if (strategy == null) return false;
-        return strategy.approve(tool.name(), arguments);
+        return strategy.approve(tool.name(), arguments, channelId, senderId);
     }
 }

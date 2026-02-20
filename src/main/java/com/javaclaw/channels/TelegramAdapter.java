@@ -1,5 +1,6 @@
 package com.javaclaw.channels;
 
+import com.javaclaw.approval.TelegramApprovalStrategy;
 import com.javaclaw.shared.model.InboundMessage;
 import com.javaclaw.shared.model.OutboundMessage;
 import org.slf4j.Logger;
@@ -22,9 +23,18 @@ public class TelegramAdapter implements ChannelAdapter, LongPollingSingleThreadU
     private TelegramClient telegramClient;
     private TelegramBotsLongPollingApplication bot;
     private MessageSink sink;
+    private TelegramApprovalStrategy approvalStrategy;
 
     public TelegramAdapter(String botToken) {
         this.botToken = botToken;
+    }
+
+    public TelegramClient getTelegramClient() {
+        return telegramClient;
+    }
+
+    public void setApprovalStrategy(TelegramApprovalStrategy strategy) {
+        this.approvalStrategy = strategy;
     }
 
     @Override
@@ -47,12 +57,17 @@ public class TelegramAdapter implements ChannelAdapter, LongPollingSingleThreadU
 
     @Override
     public void consume(Update update) {
+        if (update.hasCallbackQuery() && approvalStrategy != null) {
+            approvalStrategy.handleCallback(update.getCallbackQuery());
+            return;
+        }
         if (!update.hasMessage() || !update.getMessage().hasText()) return;
         var msg = update.getMessage();
         if (msg.getFrom() == null) return;
         var senderId = String.valueOf(msg.getFrom().getId());
         var chatId = String.valueOf(msg.getChatId());
-        sink.accept(new InboundMessage(senderId, "telegram:" + chatId, msg.getText(), Instant.now()));
+        var inbound = new InboundMessage(senderId, "telegram:" + chatId, msg.getText(), Instant.now());
+        Thread.startVirtualThread(() -> sink.accept(inbound));
     }
 
     @Override

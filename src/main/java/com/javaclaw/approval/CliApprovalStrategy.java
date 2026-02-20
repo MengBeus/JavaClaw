@@ -19,7 +19,7 @@ public class CliApprovalStrategy implements ApprovalStrategy {
     }
 
     @Override
-    public boolean approve(String toolName, String arguments) {
+    public boolean approve(String toolName, String arguments, String channelId, String senderId) {
         out.printf("[APPROVAL] Tool '%s' requires confirmation.%n", toolName);
         out.printf("  Arguments: %s%n", arguments);
         out.print("  Allow? (y/n): ");

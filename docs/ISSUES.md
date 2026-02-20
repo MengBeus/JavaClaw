@@ -396,3 +396,35 @@
 - 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:131-132`
 - 说明：先 `consumeCode()` 移除码，再校验 channel，通道不匹配时码已被删除，正确平台无法再用
 - 解决：`PairingService.consumeCode(code, expectedChannel)` 用 `ConcurrentHashMap.remove(key, value)` 原子操作，不匹配时不消费
+
+### Step 4：通道审批策略
+
+**问题 55：ApprovalStrategy 接口变更导致测试编译失败**
+
+- 文件：`src/test/java/com/javaclaw/agent/AgentLoopTest.java:74`、`src/test/java/com/javaclaw/approval/ApprovalInterceptorTest.java:44,51,58,59`
+- 说明：`ApprovalStrategy.approve()` 从二参改为三参（加 channelId），测试中 lambda 仍用旧签名，`mvn clean test` 编译失败
+- 解决：所有测试 lambda 同步更新为三参签名
+
+**问题 56：Telegram 审批死锁——单线程消费被同步阻塞**
+
+- 文件：`src/main/java/com/javaclaw/channels/TelegramAdapter.java:69`、`src/main/java/com/javaclaw/approval/TelegramApprovalStrategy.java:51`
+- 说明：`LongPollingSingleThreadUpdateConsumer` 的 `consume()` 同步调用 `sink.accept()` → agent 走到审批 `future.get(60s)` 阻塞唯一消费线程，按钮回调无法被处理，必定超时拒绝
+- 解决：`consume()` 中 `sink.accept()` 改为 `Thread.startVirtualThread()` 异步派发，释放消费线程接收 callback query
+
+**问题 57：Docker 可用时自动放行被通道策略覆盖**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java:74,169,174`
+- 说明：Tier 1 设了默认放行，但随后无条件注册 telegram/discord 审批策略。`ApprovalInterceptor` 优先用通道策略，绕过默认放行
+- 解决：通道审批策略注册加 `if (!dockerAvailable)` 守卫，Docker 可用时不注册
+
+**问题 58：Discord 同类阻塞风险**
+
+- 文件：`src/main/java/com/javaclaw/channels/DiscordAdapter.java:72`、`src/main/java/com/javaclaw/approval/DiscordApprovalStrategy.java:44`
+- 说明：`onMessageReceived()` 同步 `sink.accept()` → 审批同步等待，事件线程模型下可能导致审批响应被饿死
+- 解决：与 Telegram 同理，`sink.accept()` 改为虚拟线程派发
+
+**问题 59：审批确认未绑定发起人，旁观者可代点**
+
+- 文件：`src/main/java/com/javaclaw/approval/TelegramApprovalStrategy.java:60`、`src/main/java/com/javaclaw/approval/DiscordApprovalStrategy.java:53`
+- 说明：`handleCallback` / `handleButtonInteraction` 只按 requestId 完成 future，不校验点击者是否为触发工具调用的用户。群聊场景下旁观者可影响审批结果
+- 解决：`ApprovalStrategy.approve()` 签名加 `senderId` 参数，全链路穿透（Orchestrator → AgentLoop → Interceptor → Strategy）。审批时存 `requestId → senderId` 映射，回调时校验点击者 ID 必须匹配发起者

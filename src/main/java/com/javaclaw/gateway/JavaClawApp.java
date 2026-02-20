@@ -49,7 +49,8 @@ public class JavaClawApp {
         // Tools
         var workDir = System.getProperty("user.dir");
         var docker = new DockerExecutor();
-        var executor = docker.isAvailable() ? docker
+        var dockerAvailable = docker.isAvailable();
+        var executor = dockerAvailable ? docker
                 : new RestrictedNativeExecutor(Set.of(workDir));
         var toolRegistry = new ToolRegistry();
         toolRegistry.register(new ShellTool(executor));
@@ -59,7 +60,6 @@ public class JavaClawApp {
         // Sandbox + Approval (三级策略)
         var stdinReader = new BufferedReader(new InputStreamReader(System.in));
         var approvalInterceptor = new ApprovalInterceptor();
-        var dockerAvailable = docker.isAvailable();
         if (dockerAvailable) {
             // Tier 1: Docker 沙箱可用，危险工具自动放行
             approvalInterceptor.setDefault((name, arguments) -> true);

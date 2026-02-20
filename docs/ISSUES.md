@@ -428,3 +428,45 @@
 - 文件：`src/main/java/com/javaclaw/approval/TelegramApprovalStrategy.java:60`、`src/main/java/com/javaclaw/approval/DiscordApprovalStrategy.java:53`
 - 说明：`handleCallback` / `handleButtonInteraction` 只按 requestId 完成 future，不校验点击者是否为触发工具调用的用户。群聊场景下旁观者可影响审批结果
 - 解决：`ApprovalStrategy.approve()` 签名加 `senderId` 参数，全链路穿透（Orchestrator → AgentLoop → Interceptor → Strategy）。审批时存 `requestId → senderId` 映射，回调时校验点击者 ID 必须匹配发起者
+
+---
+
+### Phase 5 Step 1：Memory — Lucene 混合检索
+
+**问题 60：需要长期记忆存储与检索能力**
+
+- 文件：`src/main/java/com/javaclaw/memory/MemoryStore.java`、`MemoryResult.java`、`LuceneMemoryStore.java`
+- 说明：Agent 缺少跨会话记忆能力，无法存储和召回历史知识片段
+- 解决：新增 `MemoryStore` 接口（store / recall / forget），`LuceneMemoryStore` 基于 Lucene FSDirectory + SmartChineseAnalyzer 实现，索引目录 `~/.javaclaw/index`
+
+**问题 61：纯向量检索对关键词查询召回不足**
+
+- 文件：`src/main/java/com/javaclaw/memory/HybridSearcher.java`
+- 说明：单一向量检索在精确关键词匹配场景下召回率低
+- 解决：实现混合检索——KnnFloatVectorQuery（向量）+ BM25（关键词）+ RRF 融合（k=60），取两路排名倒数和作为最终分数
+
+**问题 62：需要 Embedding 向量生成服务**
+
+- 文件：`src/main/java/com/javaclaw/memory/EmbeddingService.java`
+- 说明：向量检索依赖文本向量化，需对接 embedding 端点
+- 解决：`EmbeddingService` 调用 OpenAI 兼容 `/embeddings` 接口，返回 float[] 向量，失败返回 null 由调用方降级为纯关键词检索
+
+### Phase 5 Step 2：Observability — 成本追踪与诊断
+
+**问题 63：缺少 LLM 调用成本追踪**
+
+- 文件：`src/main/java/com/javaclaw/observability/CostTracker.java`、`src/main/resources/db/migration/V4__llm_usage.sql`
+- 说明：无法统计每次 LLM 调用的 token 用量和费用
+- 解决：新增 `llm_usage` 表和 `CostTracker`，按 session/provider/model 记录 prompt_tokens、completion_tokens、cost_usd，支持日/月汇总查询
+
+**问题 64：缺少运行时指标收集**
+
+- 文件：`src/main/java/com/javaclaw/observability/MetricsConfig.java`
+- 说明：无法监控 LLM 延迟、调用次数、工具执行次数等运行指标
+- 解决：基于 Micrometer `SimpleMeterRegistry` 注册 Timer（llm.latency）和 Counter（llm.calls、tool.executions、tokens.total）
+
+**问题 65：缺少系统自检命令**
+
+- 文件：`src/main/java/com/javaclaw/observability/DoctorCommand.java`
+- 说明：部署后难以快速排查 PostgreSQL、Embedding 端点、Lucene 索引、Java 版本等依赖状态
+- 解决：`DoctorCommand.run()` 依次检查四项依赖，返回 `[OK]`/`[FAIL]`/`[WARN]` 状态报告

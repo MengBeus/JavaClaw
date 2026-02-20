@@ -31,13 +31,21 @@ class FileReadToolTest {
     }
 
     @Test
-    void rejectsPathTraversal() {
-        var tool = new FileReadTool();
-        var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
-        var input = MAPPER.createObjectNode().put("path", "../../etc/passwd");
+    void rejectsPathTraversal() throws Exception {
+        // Create a file outside workDir (sibling of tempDir)
+        var outside = Files.createTempFile(tempDir.getParent(), "secret", ".txt");
+        Files.writeString(outside, "sensitive-data");
+        try {
+            var tool = new FileReadTool();
+            var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
+            var input = MAPPER.createObjectNode().put("path", "../" + outside.getFileName());
 
-        var result = tool.execute(ctx, input);
+            var result = tool.execute(ctx, input);
 
-        assertTrue(result.isError());
+            assertTrue(result.isError());
+            assertTrue(result.output().contains("Path escapes working directory"));
+        } finally {
+            Files.deleteIfExists(outside);
+        }
     }
 }

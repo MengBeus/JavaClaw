@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Prerequisites
+for cmd in curl mvn mkfifo; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Required command not found: ${cmd}"; exit 1
+  fi
+done
+
 APP_BASE_URL="${APP_BASE_URL:-http://localhost:18789}"
 APP_LOG="${APP_LOG:-target/phase2-verify-app.log}"
 WAIT_SECONDS="${WAIT_SECONDS:-90}"

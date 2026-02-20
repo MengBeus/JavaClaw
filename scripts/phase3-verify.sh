@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Prerequisites
+for cmd in curl mvn mkfifo psql; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Required command not found: ${cmd}"; exit 1
+  fi
+done
+
 APP_BASE_URL="${APP_BASE_URL:-http://localhost:18789}"
 APP_LOG="${APP_LOG:-target/phase3-verify-app.log}"
 WAIT_SECONDS="${WAIT_SECONDS:-90}"
@@ -62,7 +69,7 @@ fi
 
 echo "[5/7] Flyway migrations (sessions table)"
 sessions_exists="$(psql "${DB_URL}" -tAc \
-  "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='sessions';" 2>/dev/null || echo "0")"
+  "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='sessions';" 2>/dev/null || echo "0")"
 if [[ "${sessions_exists}" -ge 1 ]]; then
   echo "table.sessions=OK"
 else
@@ -71,7 +78,7 @@ fi
 
 echo "[6/7] Flyway migrations (chat_messages table)"
 messages_exists="$(psql "${DB_URL}" -tAc \
-  "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='chat_messages';" 2>/dev/null || echo "0")"
+  "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='chat_messages';" 2>/dev/null || echo "0")"
 if [[ "${messages_exists}" -ge 1 ]]; then
   echo "table.chat_messages=OK"
 else

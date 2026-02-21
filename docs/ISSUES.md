@@ -544,3 +544,119 @@
 - 文件：`src/test/java/com/javaclaw/tools/MemoryToolsTest.java`、`src/test/java/com/javaclaw/agent/AgentLoopTest.java:107`
 - 说明：无 MemoryStoreTool/MemoryRecallTool 专项测试，AgentLoop 未断言 recall/store 生命周期
 - 解决：新增 MemoryToolsTest 4 个、AgentLoopTest 增加 memoryRecallAndStoreLifecycle，总测试数 41→46
+
+---
+
+## Phase 6：扩展能力
+
+### Step 1：MCP Client
+
+**问题 77：MCP stdio 帧格式不兼容**
+
+- 文件：`src/main/java/com/javaclaw/mcp/McpClient.java`
+- 说明：初版用换行分隔 JSON（newline-delimited），但 MCP 协议规范使用 LSP 风格的 `Content-Length: N\r\n\r\n{body}` 帧格式，主流 MCP Server 均不兼容
+- 解决：完全重写 McpClient，实现 Content-Length 帧的读写：`writeMessage()` 写 header+body，`readMessage()` 逐行解析 header 提取长度再读 body
+
+**问题 78：MCP 请求无超时，可永久挂起**
+
+- 文件：`src/main/java/com/javaclaw/mcp/McpClient.java`
+- 说明：`sendRequest()` 同步等待响应，若 MCP Server 不回复则线程永久阻塞
+- 解决：改为 `ConcurrentHashMap<Integer, CompletableFuture<JsonNode>>` 异步模型，后台线程读响应并 complete 对应 future，`sendRequest()` 用 `future.get(30, SECONDS)` 限时等待，超时抛 IOException
+
+**问题 79：config-example.yaml 缺少 mcp-servers 示例**
+
+- 文件：`config/config-example.yaml`
+- 说明：新增 MCP 功能但配置示例文件未更新，用户不知道如何配置
+- 解决：追加 mcp-servers 注释示例（filesystem + github）
+
+**问题 80：McpManager 配置解析直接类型转换，非法输入 ClassCastException**
+
+- 文件：`src/main/java/com/javaclaw/mcp/McpManager.java`
+- 说明：`(String) cfg.get("command")` 和 `(List<String>) cfg.get("args")` 直接强转，YAML 中非预期类型时抛 ClassCastException
+- 解决：加 `instanceof` 检查和 `String.valueOf()` 安全转换，缺少 command 字段时 `log.warn` 跳过
+
+### Step 2：Skill 系统
+
+**问题 81：Skill trigger 匹配与实际消息格式不一致**
+
+- 文件：`src/main/java/com/javaclaw/skills/SkillRouter.java`
+- 说明：trigger 用 `startsWith` 匹配，但用户消息可能带前导空格或大小写不同，导致匹配失败
+- 解决：匹配前 `strip().toLowerCase()` 标准化
+
+**问题 82：空消息触发 Skill 路由 NPE**
+
+- 文件：`src/main/java/com/javaclaw/skills/SkillRouter.java`
+- 说明：`route(null)` 或 `route("")` 未做空保护，直接调 `startsWith` 抛 NPE
+- 解决：入口判空，返回 `Optional.empty()`
+
+**问题 83：Skill YAML 解析缺少容错**
+
+- 文件：`src/main/java/com/javaclaw/skills/SkillLoader.java`
+- 说明：YAML 文件格式错误时 `Yaml.load()` 抛异常，整个 Skill 系统不可用
+- 解决：单个 Skill 文件解析失败时 `log.warn` 跳过，不影响其他 Skill 加载
+
+**问题 84：空 system_prompt 导致 LLM 收到 null content**
+
+- 文件：`src/main/java/com/javaclaw/skills/SkillExecutor.java`
+- 说明：Skill 定义中 `system_prompt` 为空时，PromptBuilder 生成的 system message content 为 null，部分 LLM API 拒绝 null content
+- 解决：空 system_prompt 时使用默认 prompt 兜底
+
+**问题 85：tools 字段为空时应表示"使用全部工具"**
+
+- 文件：`src/main/java/com/javaclaw/skills/SkillExecutor.java`
+- 说明：Skill 定义中 `tools: []` 和 `tools` 字段缺失语义不同——缺失应表示使用全部已注册工具，空列表表示不使用工具。实现时两者都走了空列表分支
+- 解决：区分 `tools == null`（全部工具）和 `tools.isEmpty()`（无工具）
+
+**问题 86：Skill 系统缺少测试**
+
+- 文件：`src/test/java/com/javaclaw/skills/`
+- 说明：SkillRouter/SkillLoader/SkillExecutor 无测试覆盖
+- 解决：新增 SkillRouterTest（trigger 匹配、空消息、优先级）和 SkillLoaderTest（正常加载、容错）
+
+### Step 3：沙箱增强（SandboxConfig）
+
+**问题 87：SandboxConfig timeout 未传递给执行器**
+
+- 文件：`src/main/java/com/javaclaw/shared/config/SandboxConfig.java`、`src/main/java/com/javaclaw/security/DockerExecutor.java`
+- 说明：`SandboxConfig.timeoutSeconds()` 已从 YAML 解析，但 `DockerExecutor` 构造时仍硬编码 30s 超时，配置值未生效
+- 解决：`DockerExecutor` 构造参数接收 `SandboxConfig`，`execute()` 使用 `config.timeoutSeconds()` 作为超时
+
+**问题 88：网络白名单未按工具粒度隔离**
+
+- 文件：`src/main/java/com/javaclaw/security/DockerExecutor.java`
+- 说明：`SandboxConfig.networkWhitelist()` 是全局列表，所有工具共享同一白名单。HttpRequestTool 需要访问 API 域名，但 ShellTool 不应有网络访问权限
+- 解决：`DockerExecutor.execute()` 新增 `List<String> networkWhitelist` 参数，由调用方按工具类型传入不同白名单
+
+**问题 89：SandboxConfig 数值字段 String 解析不健壮**
+
+- 文件：`src/main/java/com/javaclaw/shared/config/ConfigLoader.java:81-82`
+- 说明：`Integer.parseInt(String.valueOf(...))` 在 YAML 值为浮点数（如 `1.5`）或非数字字符串时抛 NumberFormatException，整个配置加载失败
+- 解决：用 `Double.parseDouble()` 后 `(int)` 截断，非法值时 `log.warn` 并使用默认值
+
+### Step 4：工具重构 + 新工具（SecurityPolicy 基础设施）
+
+**问题 90：IPv6 ULA 地址（fc00::/7）未被 SSRF 防护拦截**
+
+- 文件：`src/main/java/com/javaclaw/security/SecurityPolicy.java:169-178`
+- 说明：`isPrivateAddress()` 依赖 Java 的 `isSiteLocalAddress()`，但该方法对 `fc00::1` 返回 false（Java 只识别 `fec0::/10`，不覆盖 RFC 4193 的 `fc00::/7`）
+- 验证：`jshell` 中 `InetAddress.getByName("fc00::1").isSiteLocalAddress()` 返回 false
+- 解决：新增 `isIpv6Ula()` 方法，检查 `(bytes[0] & 0xFE) == 0xFC` 覆盖 fc00::/7 全段
+
+**问题 91：validateDomain 未拒绝 URL userinfo（凭据泄露风险）**
+
+- 文件：`src/main/java/com/javaclaw/security/SecurityPolicy.java:115-167`
+- 说明：`https://admin:pass@example.com` 格式的 URL 未被拦截，userinfo 中的凭据可能被发送到目标服务器或记录在日志中
+- 解决：`URI.create(url)` 后检查 `getUserInfo() != null`，非空则抛 SecurityException
+
+**问题 92：ActionTracker 竞态条件——size 检查与 addLast 非原子**
+
+- 文件：`src/main/java/com/javaclaw/security/ActionTracker.java:18-26`
+- 说明：初版使用 `ConcurrentLinkedDeque`，`deque.size()` 和 `deque.addLast()` 是两个独立操作。并发线程可同时通过 size 检查，导致实际记录数超过限制
+- 根因：`ConcurrentLinkedDeque.size()` 是 O(n) 遍历且非原子，check-then-act 模式在并发下不安全
+- 解决：改为 `ArrayDeque` + `synchronized(deque)` 块，将 evict + size 检查 + addLast 三步操作原子化
+
+**问题 93：allowed-domains 列表元素类型转换不安全**
+
+- 文件：`src/main/java/com/javaclaw/shared/config/ConfigLoader.java:97-100`
+- 说明：`(List<String>) http.get("allowed-domains")` 直接强转，YAML 中若包含非字符串元素（如数字 `123`）则运行时 ClassCastException
+- 解决：改为 `((List<?>) ...).stream().map(String::valueOf).collect(Collectors.toSet())`，逐元素安全转换

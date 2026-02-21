@@ -44,7 +44,7 @@ public class ReliableProvider implements ModelProvider {
                 try {
                     var resp = ResilientCall.execute(
                             () -> provider.chat(req), maxRetries, baseDelayMs);
-                    if (!model.equals(request.model()) || providers.indexOf(provider) > 0) {
+                    if (!Objects.equals(model, request.model()) || providers.indexOf(provider) > 0) {
                         log.info("Recovered via provider={} model={}", provider.id(), model);
                     }
                     return resp;
@@ -67,8 +67,10 @@ public class ReliableProvider implements ModelProvider {
     private List<String> modelChain(String model) {
         var chain = new ArrayList<String>();
         chain.add(model);
-        var fallbacks = modelFallbacks.get(model);
-        if (fallbacks != null) chain.addAll(fallbacks);
+        if (model != null) {
+            var fallbacks = modelFallbacks.get(model);
+            if (fallbacks != null) chain.addAll(fallbacks);
+        }
         return chain;
     }
 

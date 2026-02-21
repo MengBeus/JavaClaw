@@ -660,3 +660,51 @@
 - 文件：`src/main/java/com/javaclaw/shared/config/ConfigLoader.java:97-100`
 - 说明：`(List<String>) http.get("allowed-domains")` 直接强转，YAML 中若包含非字符串元素（如数字 `123`）则运行时 ClassCastException
 - 解决：改为 `((List<?>) ...).stream().map(String::valueOf).collect(Collectors.toSet())`，逐元素安全转换
+
+### Step 5：Provider 可靠性增强
+
+**问题 94：Provider 出现双层重试，导致单次请求被放大**
+
+- 文件：`src/main/java/com/javaclaw/providers/OpenAiCompatibleProvider.java`、`src/main/java/com/javaclaw/providers/ReliableProvider.java`
+- 说明：`OpenAiCompatibleProvider.chat()` 与 `ReliableProvider.chat()` 同时包裹重试，导致一次逻辑调用可能触发多倍实际请求，放大延迟与成本
+- 解决：移除 `OpenAiCompatibleProvider` 内层重试，仅保留 `ReliableProvider` 作为统一可靠性层
+
+**问题 95：Provider 链路硬编码，忽略配置中的 primary/fallback**
+
+- 文件：`src/main/java/com/javaclaw/gateway/JavaClawApp.java`
+- 说明：应用入口直接写死 provider 顺序，`config.yaml` 的 `providers.primary` / `providers.fallback` 实际不生效
+- 解决：启动时按配置动态构建 provider 链；未知 provider 或缺少关键配置时给出告警并跳过
+
+**问题 96：ReliableProvider 在 model 为空时触发 NPE**
+
+- 文件：`src/main/java/com/javaclaw/providers/ReliableProvider.java`
+- 说明：主链路调用 `ChatRequest(model=null, ...)` 时，`model.equals(...)` 与 `modelFallbacks.get(model)`（`Map.of()` 不接受 null key）会抛 `NullPointerException`
+- 解决：使用 `Objects.equals(...)` 比较；`modelChain()` 中对 `null model` 直接跳过 fallback 查询；新增 `ReliableProviderTest.handlesNullModelWithoutNpe`
+
+### 运行时稳定性
+
+**问题 97：CLI 将业务异常误报为 “Read error: null”**
+
+- 文件：`src/main/java/com/javaclaw/channels/CliAdapter.java`
+- 说明：`sink.accept(...)` 与 `reader.readLine()` 放在同一 `try`，业务异常被错误标记为输入读取错误，日志误导排查
+- 解决：拆分为两段异常处理：输入读取异常输出 `Input read error`，消息处理异常输出 `Message handling error`
+
+### 运维配置
+
+**问题 98：Embedding 模型未安装导致 404，记忆检索退化**
+
+- 文件：`src/main/java/com/javaclaw/memory/EmbeddingService.java`、`src/main/java/com/javaclaw/gateway/JavaClawApp.java`
+- 说明：当 `embedding-model` 指向不存在模型（如 `nomic-embed-text` 未 pull）时，嵌入请求返回 404；向量召回失效，仅剩关键词检索路径
+- 解决：安装并校验 embedding 模型（如 `ollama pull nomic-embed-text` + `ollama list`），或将配置改为已安装模型
+
+**问题 99：Step 5 规划项 CircuitBreaker / TimeoutBudget 尚未落地**
+
+- 文件：`src/main/java/com/javaclaw/providers/`（缺失 `CircuitBreaker.java`、`TimeoutBudget.java`）
+- 说明：执行计划要求 Provider 可靠性包含熔断与总超时预算，但当前实现仅有 `ReliableProvider + ResilientCall`，持续故障场景仍会完整重试链路
+- 解决：补齐 `CircuitBreaker`（失败阈值、半开探测、恢复）与 `TimeoutBudget`（总时限共享到重试与降级）
+
+**问题 100：ResilientCall 的 429/Retry-After 关键分支缺少专门测试**
+
+- 文件：`src/test/java/com/javaclaw/providers/ResilientCallTest.java`
+- 说明：实现已加入 `isRateLimited()` 与 `parseRetryAfterMs()`，但当前测试主要覆盖通用重试与指数退避，缺少 429 + Retry-After 行为断言
+- 解决：补充用例：`429 + retry-after` 正确等待、`retry-after` 非法值回退默认退避、非 429 不走该分支

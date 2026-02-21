@@ -36,17 +36,28 @@ public class CliAdapter implements ChannelAdapter {
         System.out.println("JAVAClaw CLI (type /quit to exit)");
         while (running) {
             System.out.print("> ");
+            String line;
             try {
-                var line = reader.readLine();
-                if (line == null || "/quit".equals(line.trim())) {
-                    stop();
-                    if (onStop != null) onStop.run();
-                    break;
-                }
-                if (line.isBlank()) continue;
+                line = reader.readLine();
+            } catch (Exception e) {
+                if (!running) break;
+                var msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                System.err.println("Input read error: " + msg);
+                continue;
+            }
+
+            if (line == null || "/quit".equals(line.trim())) {
+                stop();
+                if (onStop != null) onStop.run();
+                break;
+            }
+            if (line.isBlank()) continue;
+
+            try {
                 sink.accept(new InboundMessage("cli-user", "cli", line, Instant.now()));
             } catch (Exception e) {
-                if (running) System.err.println("Read error: " + e.getMessage());
+                var msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                System.err.println("Message handling error: " + msg);
             }
         }
     }

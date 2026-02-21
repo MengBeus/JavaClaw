@@ -43,6 +43,16 @@ class ReliableProviderTest {
     }
 
     @Test
+    void handlesNullModelWithoutNpe() {
+        var p = new MockProvider("p1", 0, "");
+        var reliable = new ReliableProvider(List.of(p), 0, 1);
+
+        var resp = reliable.chat(req(null));
+        assertEquals("ok from p1", resp.content());
+        assertEquals(1, p.calls.get());
+    }
+
+    @Test
     void fallsBackToSecondProvider() {
         var p1 = new MockProvider("p1", Integer.MAX_VALUE, "500 down");
         var p2 = new MockProvider("p2", 0, "");

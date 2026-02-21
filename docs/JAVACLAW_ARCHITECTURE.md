@@ -472,8 +472,8 @@ tools: [file_read, shell]
 - `mcp` 包：MCP Client（JSON-RPC 2.0 over stdio），自动发现并注册外部工具
 - `skills` 包：SkillLoader + SkillRegistry，YAML 定义行为模式，斜杠命令触发
 - 沙箱加固：资源限制（CPU/内存/网络）、自动检测 Docker 可用性、策略配置
-- 更多内置工具（Browser、Git、Cron）
-- 更多 Channel（Slack、微信、飞书）
+- 更多内置工具（HttpRequest、WebSearch、Git、Browser）
+- 更多 Channel（Slack）；微信、飞书为后续可选
 - 目标：系统可扩展，安全加固完成
 
 ---

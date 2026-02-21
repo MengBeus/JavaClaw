@@ -362,6 +362,8 @@ com.javaclaw.channels/
 └── SlackAdapter.java
 ```
 
+> 后续可选：CronTool（定时任务）、微信/飞书 Channel
+
 ### Step 5：Provider 可靠性增强（在 Phase 2 最小版基础上）
 
 ```
@@ -398,8 +400,9 @@ src/main/java/com/javaclaw/
 ├── auth/            # 配对认证 + 白名单
 ├── security/        # 沙箱执行器
 ├── memory/          # Lucene 混合检索
-├── observability/   # 成本追踪 + 指标 + 自检
-└── plugins/         # 插件加载
+├── mcp/            # MCP 协议客户端
+├── skills/         # Skill 加载与注册
+└── observability/  # 成本追踪 + 指标 + 自检
 ```
 
 ## 执行顺序总览
@@ -411,7 +414,7 @@ src/main/java/com/javaclaw/
 | 3 | 工具+会话 | tools, security, sessions, approval | 工具调用（有审批），会话持久化 |
 | 4 | 消息平台 | channels, auth, approval | Telegram/Discord 收发，配对认证 |
 | 5 | 记忆+可观测 | memory, observability | 跨会话记忆，成本追踪 |
-| 6 | 插件+加固 | plugins, providers, security | 插件加载，沙箱加固，降级链 |
+| 6 | MCP+Skill+加固 | mcp, skills, providers, security | MCP 工具注册，Skill 斜杠命令，沙箱加固，降级链 |
 
 ## 全局注意事项
 

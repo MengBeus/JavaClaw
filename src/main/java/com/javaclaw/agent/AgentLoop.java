@@ -45,6 +45,12 @@ public class AgentLoop {
 
     public AgentResponse execute(String userMessage, List<Map<String, Object>> history,
                                   String sessionId, String channelId, String senderId) {
+        return execute(userMessage, history, sessionId, channelId, senderId, null, null);
+    }
+
+    public AgentResponse execute(String userMessage, List<Map<String, Object>> history,
+                                  String sessionId, String channelId, String senderId,
+                                  String systemPromptOverride, List<String> allowedTools) {
         // Recall relevant memories and inject as context
         var enrichedMessage = userMessage;
         if (memoryStore != null) {
@@ -56,8 +62,8 @@ public class AgentLoop {
             }
         }
 
-        var messages = promptBuilder.build(enrichedMessage, history);
-        var tools = buildToolsDef();
+        var messages = promptBuilder.build(enrichedMessage, history, systemPromptOverride);
+        var tools = buildToolsDef(allowedTools);
         var allToolCalls = new ArrayList<Map<String, Object>>();
         history.add(Map.of("role", "user", "content", userMessage));
 
@@ -85,10 +91,11 @@ public class AgentLoop {
         return new AgentResponse(finalResp.model(), finalResp.content(), allToolCalls, finalResp.usage());
     }
 
-    private List<Map<String, Object>> buildToolsDef() {
+    private List<Map<String, Object>> buildToolsDef(List<String> allowedTools) {
         if (toolRegistry == null) return null;
         var tools = new ArrayList<Map<String, Object>>();
         for (Tool t : toolRegistry.all()) {
+            if (allowedTools != null && !allowedTools.contains(t.name())) continue;
             var fn = new LinkedHashMap<String, Object>();
             fn.put("name", t.name());
             fn.put("description", t.description());

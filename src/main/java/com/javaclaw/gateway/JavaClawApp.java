@@ -15,6 +15,8 @@ import com.javaclaw.auth.WhitelistService;
 import com.javaclaw.mcp.McpManager;
 import com.javaclaw.memory.EmbeddingService;
 import com.javaclaw.memory.LuceneMemoryStore;
+import com.javaclaw.skills.SkillLoader;
+import com.javaclaw.skills.SkillRegistry;
 import com.javaclaw.observability.CostTracker;
 import com.javaclaw.observability.DoctorCommand;
 import com.javaclaw.providers.DeepSeekProvider;
@@ -121,6 +123,15 @@ public class JavaClawApp {
         var mcpManager = new McpManager();
         mcpManager.start(config.mcpServers(), toolRegistry);
         Runtime.getRuntime().addShutdownHook(new Thread(mcpManager::close, "mcp-close"));
+
+        // Skills
+        var skillDir = java.nio.file.Path.of(System.getProperty("user.home"), ".javaclaw", "skills");
+        var skillRegistry = new SkillRegistry();
+        for (var skill : SkillLoader.loadFrom(skillDir)) {
+            skillRegistry.register(skill);
+            log.info("Registered skill: /{}", skill.trigger());
+        }
+        agent.setSkillRegistry(skillRegistry);
 
         // Auth
         var pairingService = new PairingService();

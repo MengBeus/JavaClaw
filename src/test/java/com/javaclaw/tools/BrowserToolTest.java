@@ -34,7 +34,7 @@ class BrowserToolTest {
 
     @Test
     void rejectsUnsupportedAction() {
-        var tool = new BrowserTool(policy(), ToolsConfig.BrowserConfig.defaults());
+        var tool = new BrowserTool(policy(), new ToolsConfig.BrowserConfig(true, Set.of("example.com"), 30));
         var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
         var input = MAPPER.createObjectNode().put("url", "https://example.com").put("action", "click");
         var result = tool.execute(ctx, input);

@@ -52,7 +52,7 @@ public class BrowserTool implements Tool {
             if (url.isBlank()) return new ToolResult("url is required", true);
             if (!url.startsWith("https://")) return new ToolResult("Only HTTPS URLs are allowed", true);
 
-            securityPolicy.validateDomain(url);
+            securityPolicy.validateDomain(url, config.allowedDomains());
 
             var action = input.path("action").asText("");
             if (!ALLOWED_ACTIONS.contains(action)) {

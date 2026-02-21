@@ -114,7 +114,15 @@ public class SecurityPolicy {
 
     // --- Domain Validation (SSRF defense) ---
 
+    public void validateDomain(String url, Set<String> domains) throws SecurityException {
+        validateDomainInternal(url, domains);
+    }
+
     public void validateDomain(String url) throws SecurityException {
+        validateDomainInternal(url, this.allowedDomains);
+    }
+
+    private void validateDomainInternal(String url, Set<String> domainSet) throws SecurityException {
         if (url == null || url.isBlank()) {
             throw new SecurityException("URL cannot be empty");
         }
@@ -160,10 +168,10 @@ public class SecurityPolicy {
         }
 
         // 5. allowlist
-        if (allowedDomains.isEmpty()) {
+        if (domainSet.isEmpty()) {
             throw new SecurityException("No allowed domains configured");
         }
-        if (!hostMatchesAllowlist(host)) {
+        if (!hostMatchesAllowlist(host, domainSet)) {
             throw new SecurityException("Host '" + host + "' not in allowed domains");
         }
     }
@@ -206,8 +214,8 @@ public class SecurityPolicy {
         }
     }
 
-    private boolean hostMatchesAllowlist(String host) {
-        for (var domain : allowedDomains) {
+    private boolean hostMatchesAllowlist(String host, Set<String> domainSet) {
+        for (var domain : domainSet) {
             var d = domain.toLowerCase();
             if (host.equals(d) || host.endsWith("." + d)) return true;
         }

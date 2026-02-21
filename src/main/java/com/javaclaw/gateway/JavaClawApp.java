@@ -47,8 +47,11 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import com.javaclaw.providers.ModelProvider;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 
@@ -61,14 +64,21 @@ public class JavaClawApp {
         var ctx = SpringApplication.run(JavaClawApp.class, args);
         var config = ConfigLoader.load();
 
-        // Provider
-        var apiKey = config.apiKeys().getOrDefault("deepseek", "");
-        if (apiKey.isBlank()) {
-            log.warn("DeepSeek API key not configured. Set api-keys.deepseek in ~/.javaclaw/config.yaml");
+        // Provider — build chain from config
+        var providerIds = new ArrayList<String>();
+        providerIds.add(config.primaryProvider());
+        if (config.fallbackProviders() != null) providerIds.addAll(config.fallbackProviders());
+
+        var providerList = new ArrayList<ModelProvider>();
+        for (var pid : providerIds) {
+            var p = createProvider(pid, config);
+            if (p != null) providerList.add(p);
         }
-        var reliable = new ReliableProvider(
-                java.util.List.of(new OllamaProvider("qwen3:4b"), new DeepSeekProvider(apiKey)),
-                2, 500);
+        if (providerList.isEmpty()) {
+            log.error("No providers configured. Set providers.primary in ~/.javaclaw/config.yaml");
+            System.exit(1);
+        }
+        var reliable = new ReliableProvider(providerList, 2, 500);
 
         // Tools
         var workDir = System.getenv().getOrDefault("JAVACLAW_WORK_DIR", System.getProperty("user.home"));
@@ -246,5 +256,25 @@ public class JavaClawApp {
                 approvalInterceptor.register("discord", dcStrategy);
             }
         }
+    }
+
+    private static ModelProvider createProvider(String id, com.javaclaw.shared.config.JavaClawConfig config) {
+        if (id.startsWith("ollama/")) {
+            return new OllamaProvider(id.substring(7));
+        }
+        if ("ollama".equals(id)) {
+            return new OllamaProvider("qwen3:4b");
+        }
+        if (id.startsWith("deepseek")) {
+            var key = config.apiKeys().getOrDefault("deepseek", "");
+            if (key.isBlank()) {
+                LoggerFactory.getLogger(JavaClawApp.class)
+                        .warn("Skipping {} — no api-keys.deepseek configured", id);
+                return null;
+            }
+            return new DeepSeekProvider(key);
+        }
+        LoggerFactory.getLogger(JavaClawApp.class).warn("Unknown provider: {}", id);
+        return null;
     }
 }

@@ -32,7 +32,13 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
 
     @Override
     public ChatResponse chat(ChatRequest request) {
-        return ResilientCall.execute(() -> doChat(request));
+        try {
+            return doChat(request);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

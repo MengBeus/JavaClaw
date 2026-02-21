@@ -38,6 +38,7 @@ import com.javaclaw.tools.MemoryRecallTool;
 import com.javaclaw.tools.MemoryStoreTool;
 import com.javaclaw.tools.ShellTool;
 import com.javaclaw.tools.ToolRegistry;
+import com.javaclaw.tools.WebSearchTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
@@ -87,6 +88,9 @@ public class JavaClawApp {
         toolRegistry.register(new GitTool(securityPolicy));
         if (toolsConfig.httpRequest().enabled()) {
             toolRegistry.register(new HttpRequestTool(securityPolicy, toolsConfig.httpRequest()));
+        }
+        if (toolsConfig.webSearch().enabled()) {
+            toolRegistry.register(new WebSearchTool(securityPolicy, toolsConfig.webSearch()));
         }
 
         // Sandbox + Approval (三级策略)

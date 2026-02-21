@@ -38,6 +38,7 @@ public class ConfigLoader {
         var sandbox = (Map<String, Object>) raw.getOrDefault("sandbox", Map.of());
         var telegram = (Map<String, Object>) raw.getOrDefault("telegram", Map.of());
         var discord = (Map<String, Object>) raw.getOrDefault("discord", Map.of());
+        var mcpServers = (Map<String, Map<String, Object>>) raw.getOrDefault("mcp-servers", Map.of());
 
         var apiKeys = new java.util.HashMap<String, String>();
         keys.forEach((k, v) -> apiKeys.put(k, String.valueOf(v)));
@@ -60,7 +61,8 @@ public class ConfigLoader {
             envOrDefault("JAVACLAW_TELEGRAM_TOKEN",
                 (String) telegram.getOrDefault("bot-token", "")),
             envOrDefault("JAVACLAW_DISCORD_TOKEN",
-                (String) discord.getOrDefault("bot-token", ""))
+                (String) discord.getOrDefault("bot-token", "")),
+            mcpServers
         );
     }
 

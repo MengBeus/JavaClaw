@@ -12,6 +12,7 @@ import com.javaclaw.channels.TelegramAdapter;
 import com.javaclaw.channels.DiscordAdapter;
 import com.javaclaw.auth.PairingService;
 import com.javaclaw.auth.WhitelistService;
+import com.javaclaw.mcp.McpManager;
 import com.javaclaw.memory.EmbeddingService;
 import com.javaclaw.memory.LuceneMemoryStore;
 import com.javaclaw.observability.CostTracker;
@@ -115,6 +116,11 @@ public class JavaClawApp {
         } catch (Exception e) {
             log.warn("Memory store unavailable: {}", e.getMessage());
         }
+
+        // MCP
+        var mcpManager = new McpManager();
+        mcpManager.start(config.mcpServers(), toolRegistry);
+        Runtime.getRuntime().addShutdownHook(new Thread(mcpManager::close, "mcp-close"));
 
         // Auth
         var pairingService = new PairingService();

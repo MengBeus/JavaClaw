@@ -11,5 +11,6 @@ public record JavaClawConfig(
     Map<String, String> apiKeys,
     boolean allowNativeFallback,
     String telegramBotToken,
-    String discordBotToken
+    String discordBotToken,
+    Map<String, Map<String, Object>> mcpServers
 ) {}

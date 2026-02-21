@@ -33,7 +33,7 @@ public class CliAdapter implements ChannelAdapter {
     }
 
     private void runLoop(MessageSink sink) {
-        System.out.println("JAVAClaw CLI (type /quit to exit)");
+        System.out.println("JAVAClaw CLI (type /quit or /exit to stop CLI)");
         while (running) {
             System.out.print("> ");
             String line;
@@ -46,15 +46,21 @@ public class CliAdapter implements ChannelAdapter {
                 continue;
             }
 
-            if (line == null || "/quit".equals(line.trim())) {
+            if (line == null) {
                 stop();
                 if (onStop != null) onStop.run();
                 break;
             }
-            if (line.isBlank()) continue;
+            var input = line.trim();
+            if (input.isEmpty()) continue;
+            if ("/quit".equals(input) || "/exit".equals(input)) {
+                stop();
+                if (onStop != null) onStop.run();
+                break;
+            }
 
             try {
-                sink.accept(new InboundMessage("cli-user", "cli", line, Instant.now()));
+                sink.accept(new InboundMessage("cli-user", "cli", input, Instant.now()));
             } catch (Exception e) {
                 var msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 System.err.println("Message handling error: " + msg);

@@ -21,7 +21,6 @@ import com.javaclaw.observability.CostTracker;
 import com.javaclaw.observability.DoctorCommand;
 import com.javaclaw.providers.DeepSeekProvider;
 import com.javaclaw.providers.OllamaProvider;
-import com.javaclaw.providers.ProviderRouter;
 import com.javaclaw.providers.ReliableProvider;
 import com.javaclaw.shared.config.ConfigLoader;
 import com.javaclaw.security.DockerExecutor;
@@ -48,17 +47,20 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import com.javaclaw.providers.ModelProvider;
+import sun.misc.Signal;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 @SpringBootApplication(scanBasePackages = "com.javaclaw")
 public class JavaClawApp {
 
     private static final Logger log = LoggerFactory.getLogger(JavaClawApp.class);
+    private static final long CTRL_C_CONFIRM_WINDOW_MS = 2_000;
 
     public static void main(String[] args) {
         var ctx = SpringApplication.run(JavaClawApp.class, args);
@@ -176,11 +178,9 @@ public class JavaClawApp {
         var cli = new CliAdapter(stdinReader);
         cli.onStop(() -> {
             registry.unregister(cli.id());
-            if (registry.allStopped()) {
-                ctx.close();
-            }
         });
         registry.register(cli);
+        installCtrlCShutdownHandler(registry, ctx);
 
         // Telegram（配置了 bot-token 才启动）
         TelegramAdapter telegramAdapter = null;
@@ -256,6 +256,28 @@ public class JavaClawApp {
                 discordAdapter.setApprovalStrategy(dcStrategy);
                 approvalInterceptor.register("discord", dcStrategy);
             }
+        }
+    }
+
+    private static void installCtrlCShutdownHandler(ChannelRegistry registry, ConfigurableApplicationContext ctx) {
+        try {
+            var lastCtrlCAt = new AtomicLong(0L);
+            Signal.handle(new Signal("INT"), sig -> {
+                long now = System.currentTimeMillis();
+                long prev = lastCtrlCAt.get();
+                if (prev > 0 && now - prev <= CTRL_C_CONFIRM_WINDOW_MS) {
+                    System.out.println();
+                    log.warn("Ctrl+C confirmed; shutting down all channels and exiting");
+                    registry.stopAll();
+                    ctx.close();
+                    return;
+                }
+                lastCtrlCAt.set(now);
+                System.out.println();
+                System.out.println("Press Ctrl+C again within 2s to stop all channels and exit.");
+            });
+        } catch (Throwable t) {
+            log.warn("Ctrl+C double-press handler unavailable: {}", t.getMessage());
         }
     }
 

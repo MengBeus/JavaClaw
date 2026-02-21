@@ -41,3 +41,19 @@ mcp-servers:
   #   args: ["-y", "@modelcontextprotocol/server-github"]
   #   env:
   #     GITHUB_TOKEN: your-github-token
+
+# Tool settings
+tools:
+  http-request:
+    enabled: true
+    allowed-domains: ["api.github.com", "httpbin.org"]
+    timeout: 30
+    max-response-size: 1048576
+  web-search:
+    enabled: true
+    provider: duckduckgo
+    max-results: 5
+    timeout: 15
+  security:
+    max-actions-per-hour: 120
+    workspace-only: true

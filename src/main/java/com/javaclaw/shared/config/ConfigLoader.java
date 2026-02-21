@@ -7,6 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class ConfigLoader {
 
@@ -24,6 +26,7 @@ public class ConfigLoader {
         if (Files.exists(path)) {
             try (var in = Files.newInputStream(path)) {
                 raw = new Yaml().load(in);
+                if (raw == null) raw = Map.of();
             } catch (IOException e) {
                 throw new RuntimeException("Failed to load config: " + path, e);
             }
@@ -39,6 +42,7 @@ public class ConfigLoader {
         var telegram = (Map<String, Object>) raw.getOrDefault("telegram", Map.of());
         var discord = (Map<String, Object>) raw.getOrDefault("discord", Map.of());
         var mcpServers = (Map<String, Map<String, Object>>) raw.getOrDefault("mcp-servers", Map.of());
+        var tools = (Map<String, Object>) raw.getOrDefault("tools", Map.of());
 
         var apiKeys = new java.util.HashMap<String, String>();
         keys.forEach((k, v) -> apiKeys.put(k, String.valueOf(v)));
@@ -63,7 +67,8 @@ public class ConfigLoader {
             envOrDefault("JAVACLAW_DISCORD_TOKEN",
                 (String) discord.getOrDefault("bot-token", "")),
             mcpServers,
-            parseSandboxConfig(sandbox)
+            parseSandboxConfig(sandbox),
+            parseToolsConfig(tools)
         );
     }
 
@@ -76,6 +81,40 @@ public class ConfigLoader {
             Integer.parseInt(String.valueOf(sandbox.getOrDefault("pids-limit", defaults.pidsLimit()))),
             Long.parseLong(String.valueOf(sandbox.getOrDefault("timeout", defaults.timeoutSeconds()))),
             (List<String>) sandbox.getOrDefault("network-whitelist", defaults.networkWhitelist())
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ToolsConfig parseToolsConfig(Map<String, Object> tools) {
+        var http = (Map<String, Object>) tools.getOrDefault("http-request", Map.of());
+        var search = (Map<String, Object>) tools.getOrDefault("web-search", Map.of());
+        var sec = (Map<String, Object>) tools.getOrDefault("security", Map.of());
+
+        var httpDef = ToolsConfig.HttpRequestConfig.defaults();
+        var searchDef = ToolsConfig.WebSearchConfig.defaults();
+        var secDef = ToolsConfig.SecurityConfig.defaults();
+
+        var domains = http.containsKey("allowed-domains")
+                ? ((List<String>) http.get("allowed-domains")).stream().collect(Collectors.toSet())
+                : httpDef.allowedDomains();
+
+        return new ToolsConfig(
+            new ToolsConfig.HttpRequestConfig(
+                Boolean.TRUE.equals(http.getOrDefault("enabled", httpDef.enabled())),
+                domains,
+                Integer.parseInt(String.valueOf(http.getOrDefault("timeout", httpDef.timeoutSeconds()))),
+                Integer.parseInt(String.valueOf(http.getOrDefault("max-response-size", httpDef.maxResponseSize())))
+            ),
+            new ToolsConfig.WebSearchConfig(
+                Boolean.TRUE.equals(search.getOrDefault("enabled", searchDef.enabled())),
+                String.valueOf(search.getOrDefault("provider", searchDef.provider())),
+                Integer.parseInt(String.valueOf(search.getOrDefault("max-results", searchDef.maxResults()))),
+                Integer.parseInt(String.valueOf(search.getOrDefault("timeout", searchDef.timeoutSeconds())))
+            ),
+            new ToolsConfig.SecurityConfig(
+                Integer.parseInt(String.valueOf(sec.getOrDefault("max-actions-per-hour", secDef.maxActionsPerHour()))),
+                Boolean.TRUE.equals(sec.getOrDefault("workspace-only", secDef.workspaceOnly()))
+            )
         );
     }
 

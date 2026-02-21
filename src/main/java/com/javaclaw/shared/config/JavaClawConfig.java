@@ -13,5 +13,6 @@ public record JavaClawConfig(
     String telegramBotToken,
     String discordBotToken,
     Map<String, Map<String, Object>> mcpServers,
-    SandboxConfig sandbox
+    SandboxConfig sandbox,
+    ToolsConfig tools
 ) {}

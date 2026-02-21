@@ -32,6 +32,7 @@ import com.javaclaw.shared.model.OutboundMessage;
 import com.javaclaw.tools.FileReadTool;
 import com.javaclaw.tools.FileWriteTool;
 import com.javaclaw.tools.GitTool;
+import com.javaclaw.tools.HttpRequestTool;
 import com.javaclaw.tools.MemoryForgetTool;
 import com.javaclaw.tools.MemoryRecallTool;
 import com.javaclaw.tools.MemoryStoreTool;
@@ -84,6 +85,9 @@ public class JavaClawApp {
         toolRegistry.register(new FileReadTool(securityPolicy));
         toolRegistry.register(new FileWriteTool(securityPolicy));
         toolRegistry.register(new GitTool(securityPolicy));
+        if (toolsConfig.httpRequest().enabled()) {
+            toolRegistry.register(new HttpRequestTool(securityPolicy, toolsConfig.httpRequest()));
+        }
 
         // Sandbox + Approval (三级策略)
         var stdinReader = new BufferedReader(new InputStreamReader(System.in));

@@ -17,7 +17,7 @@ public class RestrictedNativeExecutor implements ToolExecutor {
     }
 
     @Override
-    public ExecutionResult execute(String command, String workDir, long timeoutSeconds) {
+    public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName) {
         if (workDir != null && !isAllowedDir(workDir)) {
             return new ExecutionResult("[BLOCKED] Working directory not in whitelist: " + workDir, -1);
         }

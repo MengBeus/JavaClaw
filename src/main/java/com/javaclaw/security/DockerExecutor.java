@@ -17,14 +17,14 @@ public class DockerExecutor implements ToolExecutor {
     public DockerExecutor(SandboxConfig config) { this.config = config; }
 
     @Override
-    public ExecutionResult execute(String command, String workDir, long timeoutSeconds) {
+    public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName) {
         try {
             var cmd = new ArrayList<String>();
             cmd.add("docker"); cmd.add("run"); cmd.add("--rm");
             cmd.add("--memory=" + config.memory());
             cmd.add("--cpus=" + config.cpus());
             cmd.add("--pids-limit=" + config.pidsLimit());
-            if (config.networkWhitelist().isEmpty()) {
+            if (!config.networkWhitelist().contains(toolName)) {
                 cmd.add("--network=none");
             }
             cmd.add("-v"); cmd.add(workDir + ":/work");

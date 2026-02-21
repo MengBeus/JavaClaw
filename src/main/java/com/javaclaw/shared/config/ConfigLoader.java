@@ -72,9 +72,9 @@ public class ConfigLoader {
         var defaults = SandboxConfig.defaults();
         return new SandboxConfig(
             (String) sandbox.getOrDefault("memory", defaults.memory()),
-            (String) sandbox.getOrDefault("cpus", defaults.cpus()),
-            ((Number) sandbox.getOrDefault("pids-limit", defaults.pidsLimit())).intValue(),
-            ((Number) sandbox.getOrDefault("timeout", defaults.timeoutSeconds())).longValue(),
+            String.valueOf(sandbox.getOrDefault("cpus", defaults.cpus())),
+            Integer.parseInt(String.valueOf(sandbox.getOrDefault("pids-limit", defaults.pidsLimit()))),
+            Long.parseLong(String.valueOf(sandbox.getOrDefault("timeout", defaults.timeoutSeconds()))),
             (List<String>) sandbox.getOrDefault("network-whitelist", defaults.networkWhitelist())
         );
     }

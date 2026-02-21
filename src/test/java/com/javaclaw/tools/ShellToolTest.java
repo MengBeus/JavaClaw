@@ -23,7 +23,7 @@ class ShellToolTest {
     void marksNonZeroExitAsError() {
         ToolExecutor executor = new ToolExecutor() {
             @Override
-            public ExecutionResult execute(String command, String workDir, long timeoutSeconds) {
+            public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName) {
                 return new ExecutionResult("failed", 2);
             }
 
@@ -46,7 +46,7 @@ class ShellToolTest {
     void keepsZeroExitAsSuccess() {
         ToolExecutor executor = new ToolExecutor() {
             @Override
-            public ExecutionResult execute(String command, String workDir, long timeoutSeconds) {
+            public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName) {
                 return new ExecutionResult("ok", 0);
             }
 

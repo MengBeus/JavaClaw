@@ -71,7 +71,7 @@ public class JavaClawApp {
         var executor = dockerAvailable ? docker
                 : new RestrictedNativeExecutor(Set.of(workDir));
         var toolRegistry = new ToolRegistry();
-        toolRegistry.register(new ShellTool(executor));
+        toolRegistry.register(new ShellTool(executor, config.sandbox().timeoutSeconds()));
         toolRegistry.register(new FileReadTool());
         toolRegistry.register(new FileWriteTool());
 

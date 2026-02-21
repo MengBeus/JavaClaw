@@ -24,13 +24,15 @@ public class SkillLoader {
                 .map(p -> {
                     try (var in = Files.newInputStream(p)) {
                         Map<String, Object> raw = yaml.load(in);
+                        if (raw == null) return null;
+                        var prompt = (String) raw.get("system_prompt");
                         return new Skill(
                             (String) raw.get("name"),
                             (String) raw.get("trigger"),
-                            (String) raw.getOrDefault("system_prompt", ""),
+                            prompt != null && !prompt.isBlank() ? prompt : null,
                             (List<String>) raw.getOrDefault("tools", List.of())
                         );
-                    } catch (IOException e) {
+                    } catch (Exception e) {
                         log.warn("Failed to load skill from {}: {}", p, e.getMessage());
                         return null;
                     }

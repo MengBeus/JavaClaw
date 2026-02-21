@@ -8,7 +8,8 @@ public class SkillRegistry {
     private final Map<String, Skill> byTrigger = new LinkedHashMap<>();
 
     public void register(Skill skill) {
-        byTrigger.put(skill.trigger(), skill);
+        var key = skill.trigger().startsWith("/") ? skill.trigger().substring(1) : skill.trigger();
+        byTrigger.put(key, skill);
     }
 
     public Skill match(String message) {

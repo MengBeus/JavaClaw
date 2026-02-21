@@ -63,10 +63,10 @@ public class DefaultAgentOrchestrator implements AgentOrchestrator {
             var skill = skillRegistry.match(message);
             if (skill != null) {
                 systemPrompt = skill.systemPrompt();
-                allowedTools = skill.tools().isEmpty() ? null : skill.tools();
+                allowedTools = skill.tools();
                 // Strip /trigger prefix from message
                 var parts = message.split("\\s", 2);
-                message = parts.length > 1 ? parts[1] : "";
+                message = parts.length > 1 ? parts[1] : "请根据你的角色开始对话";
             }
         }
 

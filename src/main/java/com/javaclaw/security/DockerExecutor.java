@@ -1,22 +1,37 @@
 package com.javaclaw.security;
 
+import com.javaclaw.shared.config.SandboxConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 public class DockerExecutor implements ToolExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(DockerExecutor.class);
+    private final SandboxConfig config;
+
+    public DockerExecutor() { this(SandboxConfig.defaults()); }
+
+    public DockerExecutor(SandboxConfig config) { this.config = config; }
 
     @Override
     public ExecutionResult execute(String command, String workDir, long timeoutSeconds) {
         try {
-            var pb = new ProcessBuilder("docker", "run", "--rm",
-                    "--memory=256m", "--cpus=0.5", "--pids-limit=64",
-                    "--network=none",
-                    "-v", workDir + ":/work", "-w", "/work",
-                    "ubuntu:22.04", "bash", "-c", command);
+            var cmd = new ArrayList<String>();
+            cmd.add("docker"); cmd.add("run"); cmd.add("--rm");
+            cmd.add("--memory=" + config.memory());
+            cmd.add("--cpus=" + config.cpus());
+            cmd.add("--pids-limit=" + config.pidsLimit());
+            if (config.networkWhitelist().isEmpty()) {
+                cmd.add("--network=none");
+            }
+            cmd.add("-v"); cmd.add(workDir + ":/work");
+            cmd.add("-w"); cmd.add("/work");
+            cmd.add("ubuntu:22.04"); cmd.add("bash"); cmd.add("-c"); cmd.add(command);
+
+            var pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             var proc = pb.start();
             var stdout = new java.io.ByteArrayOutputStream();

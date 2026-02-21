@@ -66,7 +66,7 @@ public class JavaClawApp {
 
         // Tools
         var workDir = System.getenv().getOrDefault("JAVACLAW_WORK_DIR", System.getProperty("user.home"));
-        var docker = new DockerExecutor();
+        var docker = new DockerExecutor(config.sandbox());
         var dockerAvailable = docker.isAvailable();
         var executor = dockerAvailable ? docker
                 : new RestrictedNativeExecutor(Set.of(workDir));

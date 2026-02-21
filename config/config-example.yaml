@@ -22,6 +22,15 @@ telegram:
 discord:
   bot-token: your-discord-bot-token
 
+# Sandbox settings (Docker container limits)
+sandbox:
+  allow-native-fallback: false
+  memory: 256m
+  cpus: "0.5"
+  pids-limit: 64
+  timeout: 30
+  # network-whitelist: []  # empty = --network=none; add tool names to allow network
+
 # MCP Servers (optional, external tool extension via Model Context Protocol)
 mcp-servers:
   # filesystem:

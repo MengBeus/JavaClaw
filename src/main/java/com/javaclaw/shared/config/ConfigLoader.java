@@ -62,7 +62,20 @@ public class ConfigLoader {
                 (String) telegram.getOrDefault("bot-token", "")),
             envOrDefault("JAVACLAW_DISCORD_TOKEN",
                 (String) discord.getOrDefault("bot-token", "")),
-            mcpServers
+            mcpServers,
+            parseSandboxConfig(sandbox)
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static SandboxConfig parseSandboxConfig(Map<String, Object> sandbox) {
+        var defaults = SandboxConfig.defaults();
+        return new SandboxConfig(
+            (String) sandbox.getOrDefault("memory", defaults.memory()),
+            (String) sandbox.getOrDefault("cpus", defaults.cpus()),
+            ((Number) sandbox.getOrDefault("pids-limit", defaults.pidsLimit())).intValue(),
+            ((Number) sandbox.getOrDefault("timeout", defaults.timeoutSeconds())).longValue(),
+            (List<String>) sandbox.getOrDefault("network-whitelist", defaults.networkWhitelist())
         );
     }
 

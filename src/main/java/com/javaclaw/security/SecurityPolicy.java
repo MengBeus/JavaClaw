@@ -121,13 +121,17 @@ public class SecurityPolicy {
         if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
             throw new SecurityException("Only http/https URLs allowed");
         }
-        // 2. host extraction
-        String host;
+        // 2. host extraction + reject userinfo
+        URI uri;
         try {
-            host = URI.create(url).getHost();
+            uri = URI.create(url);
         } catch (Exception e) {
             throw new SecurityException("Invalid URL: " + e.getMessage());
         }
+        if (uri.getUserInfo() != null) {
+            throw new SecurityException("URL userinfo not allowed");
+        }
+        String host = uri.getHost();
         if (host == null || host.isBlank()) {
             throw new SecurityException("Cannot extract host from URL");
         }
@@ -169,7 +173,14 @@ public class SecurityPolicy {
                 || addr.isAnyLocalAddress()
                 || addr.isMulticastAddress()
                 || isCgn(addr)
+                || isIpv6Ula(addr)
                 || isMappedPrivateV4(addr);
+    }
+
+    private boolean isIpv6Ula(InetAddress addr) {
+        var bytes = addr.getAddress();
+        if (bytes.length != 16) return false;
+        return (bytes[0] & 0xFE) == 0xFC; // fc00::/7
     }
 
     private boolean isCgn(InetAddress addr) {

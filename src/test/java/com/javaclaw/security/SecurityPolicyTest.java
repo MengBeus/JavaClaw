@@ -90,6 +90,16 @@ class SecurityPolicyTest {
     }
 
     @Test
+    void validateDomainRejectsUserinfo() {
+        assertThrows(SecurityException.class, () -> policy().validateDomain("https://admin:pass@example.com"));
+    }
+
+    @Test
+    void validateDomainRejectsIpv6Ula() {
+        assertThrows(SecurityException.class, () -> policy().validateDomain("http://[fc00::1]"));
+    }
+
+    @Test
     void validateDomainRejectsEmpty() {
         assertThrows(SecurityException.class, () -> policy().validateDomain(""));
     }

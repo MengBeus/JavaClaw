@@ -95,7 +95,8 @@ public class ConfigLoader {
         var secDef = ToolsConfig.SecurityConfig.defaults();
 
         var domains = http.containsKey("allowed-domains")
-                ? ((List<String>) http.get("allowed-domains")).stream().collect(Collectors.toSet())
+                ? ((List<?>) http.get("allowed-domains")).stream()
+                        .map(String::valueOf).collect(Collectors.toSet())
                 : httpDef.allowedDomains();
 
         return new ToolsConfig(

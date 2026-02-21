@@ -21,3 +21,14 @@ telegram:
 
 discord:
   bot-token: your-discord-bot-token
+
+# MCP Servers (optional, external tool extension via Model Context Protocol)
+mcp-servers:
+  # filesystem:
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+  # github:
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-github"]
+  #   env:
+  #     GITHUB_TOKEN: your-github-token

@@ -2,33 +2,37 @@ package com.javaclaw.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages a single MCP Server subprocess, communicates via JSON-RPC 2.0 over stdio.
+ * Uses Content-Length framing (like LSP) per MCP spec.
  */
 public class McpClient implements Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(McpClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final int REQUEST_TIMEOUT_SECONDS = 30;
 
     private final String name;
     private final String command;
     private final List<String> args;
     private final Map<String, String> env;
     private final AtomicInteger idSeq = new AtomicInteger(1);
+    private final ConcurrentMap<Integer, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
 
     private Process process;
-    private BufferedWriter writer;
-    private BufferedReader reader;
+    private OutputStream out;
+    private InputStream in;
 
     public McpClient(String name, String command, List<String> args, Map<String, String> env) {
         this.name = name;
@@ -49,10 +53,10 @@ public class McpClient implements Closeable {
         env.forEach((k, v) -> pb.environment().put(k, v));
 
         process = pb.start();
-        writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
-        reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        out = new BufferedOutputStream(process.getOutputStream());
+        in = new BufferedInputStream(process.getInputStream());
 
-        // Drain stderr in background to prevent blocking
+        // Drain stderr in background
         Thread.startVirtualThread(() -> {
             try (var err = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
                 String line;
@@ -62,7 +66,66 @@ public class McpClient implements Closeable {
             } catch (IOException ignored) {}
         });
 
+        // Background reader: dispatches responses to pending futures
+        Thread.startVirtualThread(this::readLoop);
+
         initialize();
+    }
+
+    private void readLoop() {
+        try {
+            while (process.isAlive()) {
+                var msg = readMessage();
+                if (msg == null) break;
+                if (msg.has("id") && !msg.get("id").isNull()) {
+                    var future = pending.remove(msg.get("id").asInt());
+                    if (future != null) future.complete(msg);
+                }
+            }
+        } catch (IOException e) {
+            if (process.isAlive()) log.debug("[mcp:{}] read loop error: {}", name, e.getMessage());
+        } finally {
+            pending.values().forEach(f -> f.complete(null));
+            pending.clear();
+        }
+    }
+
+    private JsonNode readMessage() throws IOException {
+        int contentLength = -1;
+        String headerLine;
+        while ((headerLine = readHeaderLine()) != null) {
+            if (headerLine.isEmpty()) break;
+            if (headerLine.startsWith("Content-Length: ")) {
+                contentLength = Integer.parseInt(headerLine.substring(16).trim());
+            }
+        }
+        if (contentLength < 0) return null;
+        byte[] body = in.readNBytes(contentLength);
+        if (body.length < contentLength) return null;
+        return MAPPER.readTree(body);
+    }
+
+    private String readHeaderLine() throws IOException {
+        var sb = new StringBuilder();
+        int prev = -1;
+        while (true) {
+            int b = in.read();
+            if (b == -1) return null;
+            if (b == '\n' && prev == '\r') {
+                sb.setLength(sb.length() - 1);
+                return sb.toString();
+            }
+            sb.append((char) b);
+            prev = b;
+        }
+    }
+
+    private synchronized void writeMessage(JsonNode msg) throws IOException {
+        byte[] body = MAPPER.writeValueAsBytes(msg);
+        var header = ("Content-Length: " + body.length + "\r\n\r\n").getBytes(StandardCharsets.UTF_8);
+        out.write(header);
+        out.write(body);
+        out.flush();
     }
 
     private void initialize() throws IOException {
@@ -75,7 +138,6 @@ public class McpClient implements Closeable {
         if (result == null) {
             throw new IOException("MCP server " + name + " did not respond to initialize");
         }
-        // Send initialized notification
         sendNotification("notifications/initialized", MAPPER.createObjectNode());
         log.info("MCP server '{}' initialized", name);
     }
@@ -102,7 +164,7 @@ public class McpClient implements Closeable {
         return sendRequest("tools/call", params);
     }
 
-    private synchronized JsonNode sendRequest(String method, JsonNode params) throws IOException {
+    private JsonNode sendRequest(String method, JsonNode params) throws IOException {
         int id = idSeq.getAndIncrement();
         var req = MAPPER.createObjectNode();
         req.put("jsonrpc", "2.0");
@@ -110,35 +172,33 @@ public class McpClient implements Closeable {
         req.put("method", method);
         req.set("params", params);
 
-        writer.write(MAPPER.writeValueAsString(req));
-        writer.newLine();
-        writer.flush();
+        var future = new CompletableFuture<JsonNode>();
+        pending.put(id, future);
+        writeMessage(req);
 
-        // Read response lines until we get one with matching id
-        String line;
-        while ((line = reader.readLine()) != null) {
-            var node = MAPPER.readTree(line);
-            if (node.has("id") && node.get("id").asInt() == id) {
-                if (node.has("error")) {
-                    log.warn("[mcp:{}] error: {}", name, node.get("error"));
-                    return null;
-                }
-                return node.get("result");
+        try {
+            var response = future.get(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (response == null) return null;
+            if (response.has("error")) {
+                log.warn("[mcp:{}] error: {}", name, response.get("error"));
+                return null;
             }
-            // Skip notifications from server
+            return response.get("result");
+        } catch (TimeoutException e) {
+            pending.remove(id);
+            throw new IOException("MCP request '" + method + "' timed out after " + REQUEST_TIMEOUT_SECONDS + "s");
+        } catch (ExecutionException | InterruptedException e) {
+            pending.remove(id);
+            throw new IOException("MCP request '" + method + "' failed: " + e.getMessage(), e);
         }
-        return null;
     }
 
-    private synchronized void sendNotification(String method, JsonNode params) throws IOException {
+    private void sendNotification(String method, JsonNode params) throws IOException {
         var req = MAPPER.createObjectNode();
         req.put("jsonrpc", "2.0");
         req.put("method", method);
         req.set("params", params);
-
-        writer.write(MAPPER.writeValueAsString(req));
-        writer.newLine();
-        writer.flush();
+        writeMessage(req);
     }
 
     @Override

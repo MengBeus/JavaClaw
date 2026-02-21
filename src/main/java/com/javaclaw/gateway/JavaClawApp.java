@@ -21,6 +21,7 @@ import com.javaclaw.observability.CostTracker;
 import com.javaclaw.observability.DoctorCommand;
 import com.javaclaw.providers.DeepSeekProvider;
 import com.javaclaw.providers.OllamaProvider;
+import com.javaclaw.providers.OpenAiProvider;
 import com.javaclaw.providers.ReliableProvider;
 import com.javaclaw.shared.config.ConfigLoader;
 import com.javaclaw.security.DockerExecutor;
@@ -287,6 +288,16 @@ public class JavaClawApp {
         }
         if ("ollama".equals(id)) {
             return new OllamaProvider("qwen3:4b");
+        }
+        if (id.startsWith("openai/")) {
+            var key = config.apiKeys().getOrDefault("openai", "");
+            var baseUrl = config.apiKeys().getOrDefault("openai-base-url", "https://api.openai.com/v1");
+            if (key.isBlank()) {
+                LoggerFactory.getLogger(JavaClawApp.class)
+                        .warn("Skipping {} — no api-keys.openai configured", id);
+                return null;
+            }
+            return new OpenAiProvider(key, baseUrl, id.substring(7));
         }
         if (id.startsWith("deepseek")) {
             var key = config.apiKeys().getOrDefault("deepseek", "");

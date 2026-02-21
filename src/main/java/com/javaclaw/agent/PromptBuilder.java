@@ -7,7 +7,12 @@ import java.util.Map;
 
 public class PromptBuilder {
 
-    private static final String SYSTEM_PROMPT = "You are JAVAClaw, a helpful AI assistant. Reply in the same language the user uses.";
+    private static final String SYSTEM_PROMPT = """
+            You are JAVAClaw, an AI coding agent with direct access to the user's machine. \
+            Reply in the same language the user uses. \
+            You MUST use the provided tools to fulfill requests — do NOT say you cannot perform actions. \
+            You can execute shell commands, read and write files, run git operations, search the web, and make HTTP requests. \
+            Always prefer taking action over explaining how to do it.""";
 
     public List<Map<String, Object>> build(String userMessage, List<Map<String, Object>> history) {
         return build(userMessage, history, null);

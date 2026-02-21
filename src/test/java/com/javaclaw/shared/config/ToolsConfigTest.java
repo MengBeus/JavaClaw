@@ -23,6 +23,8 @@ class ToolsConfigTest {
         assertTrue(tools.httpRequest().enabled());
         assertTrue(tools.httpRequest().allowedDomains().isEmpty());
         assertEquals("duckduckgo", tools.webSearch().provider());
+        assertFalse(tools.browser().enabled());
+        assertTrue(tools.browser().allowedDomains().isEmpty());
     }
 
     @Test
@@ -42,6 +44,10 @@ class ToolsConfigTest {
               security:
                 max-actions-per-hour: 50
                 workspace-only: false
+              browser:
+                enabled: true
+                allowed-domains: ["docs.oracle.com"]
+                timeout: 45
             """;
         var cfg = writeAndLoad(yaml);
         var tools = cfg.tools();
@@ -55,6 +61,9 @@ class ToolsConfigTest {
         assertEquals(3, tools.webSearch().maxResults());
         assertEquals(50, tools.security().maxActionsPerHour());
         assertFalse(tools.security().workspaceOnly());
+        assertTrue(tools.browser().enabled());
+        assertTrue(tools.browser().allowedDomains().contains("docs.oracle.com"));
+        assertEquals(45, tools.browser().timeoutSeconds());
     }
 
     @Test

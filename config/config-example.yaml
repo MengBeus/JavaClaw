@@ -54,6 +54,10 @@ tools:
     provider: duckduckgo
     max-results: 5
     timeout: 15
+  browser:
+    enabled: false
+    allowed-domains: ["docs.oracle.com"]
+    timeout: 30
   security:
     max-actions-per-hour: 120
     workspace-only: true

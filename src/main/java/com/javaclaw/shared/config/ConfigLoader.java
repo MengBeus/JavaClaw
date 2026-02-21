@@ -89,10 +89,12 @@ public class ConfigLoader {
         var http = (Map<String, Object>) tools.getOrDefault("http-request", Map.of());
         var search = (Map<String, Object>) tools.getOrDefault("web-search", Map.of());
         var sec = (Map<String, Object>) tools.getOrDefault("security", Map.of());
+        var browser = (Map<String, Object>) tools.getOrDefault("browser", Map.of());
 
         var httpDef = ToolsConfig.HttpRequestConfig.defaults();
         var searchDef = ToolsConfig.WebSearchConfig.defaults();
         var secDef = ToolsConfig.SecurityConfig.defaults();
+        var browserDef = ToolsConfig.BrowserConfig.defaults();
 
         var domains = http.containsKey("allowed-domains")
                 ? ((List<?>) http.get("allowed-domains")).stream()
@@ -115,6 +117,14 @@ public class ConfigLoader {
             new ToolsConfig.SecurityConfig(
                 Integer.parseInt(String.valueOf(sec.getOrDefault("max-actions-per-hour", secDef.maxActionsPerHour()))),
                 Boolean.TRUE.equals(sec.getOrDefault("workspace-only", secDef.workspaceOnly()))
+            ),
+            new ToolsConfig.BrowserConfig(
+                Boolean.TRUE.equals(browser.getOrDefault("enabled", browserDef.enabled())),
+                browser.containsKey("allowed-domains")
+                    ? ((List<?>) browser.get("allowed-domains")).stream()
+                            .map(String::valueOf).collect(Collectors.toSet())
+                    : browserDef.allowedDomains(),
+                Integer.parseInt(String.valueOf(browser.getOrDefault("timeout", browserDef.timeoutSeconds())))
             )
         );
     }

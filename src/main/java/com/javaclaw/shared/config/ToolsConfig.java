@@ -5,7 +5,8 @@ import java.util.Set;
 public record ToolsConfig(
     HttpRequestConfig httpRequest,
     WebSearchConfig webSearch,
-    SecurityConfig security
+    SecurityConfig security,
+    BrowserConfig browser
 ) {
     public record HttpRequestConfig(boolean enabled, Set<String> allowedDomains,
                                      int timeoutSeconds, int maxResponseSize) {
@@ -27,11 +28,18 @@ public record ToolsConfig(
         }
     }
 
+    public record BrowserConfig(boolean enabled, Set<String> allowedDomains, int timeoutSeconds) {
+        public static BrowserConfig defaults() {
+            return new BrowserConfig(false, Set.of(), 30);
+        }
+    }
+
     public static ToolsConfig defaults() {
         return new ToolsConfig(
             HttpRequestConfig.defaults(),
             WebSearchConfig.defaults(),
-            SecurityConfig.defaults()
+            SecurityConfig.defaults(),
+            BrowserConfig.defaults()
         );
     }
 }

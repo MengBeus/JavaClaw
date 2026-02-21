@@ -312,29 +312,44 @@ com.javaclaw.tools/
 
 ---
 
-## Phase 6：插件 + 沙箱加固
+## Phase 6：MCP + Skill + 沙箱加固
 
 > 目标：系统可扩展，安全加固完成
 
-### Step 1：插件双轨制
+### Step 1：MCP Client
 
 ```
-com.javaclaw.plugins/
-├── PluginLoader.java               # 扫描、加载、注册
-├── PluginManifest.java             # 解析 plugin.yaml
-└── SandboxedPluginProxy.java       # Track B 代理，JSON-RPC 通信
+com.javaclaw.mcp/
+├── McpClient.java                 # JSON-RPC 2.0 over stdio，管理单个 MCP Server
+├── McpManager.java                # 读取 config.yaml mcp-servers 节，批量启动/停止
+└── McpToolBridge.java             # 将 MCP Server 暴露的 tools 适配为 Tool 接口注册到 ToolRegistry
 ```
 
-- Track A（可信）：`~/.javaclaw/plugins/trusted/` JAR，ServiceLoader 加载
-- Track B（不可信）：`~/.javaclaw/plugins/sandboxed/` JAR，子进程隔离，`-Xmx128m`
+- 从 `~/.javaclaw/config.yaml` 的 `mcp-servers` 节读取 server 配置
+- 每个 server 起子进程，通过 stdin/stdout JSON-RPC 2.0 通信
+- 启动时调用 `tools/list` 获取工具列表，自动注册到 ToolRegistry
+- 工具调用时通过 `tools/call` 转发，结果回传给 Agent
 
-### Step 2：沙箱加固
+### Step 2：Skill 系统
+
+```
+com.javaclaw.skills/
+├── SkillLoader.java               # 扫描 ~/.javaclaw/skills/*.yaml，解析 Skill 定义
+├── SkillRegistry.java             # 按 trigger 注册，匹配斜杠命令
+└── Skill.java                     # Skill 数据模型（name, trigger, system_prompt, tools）
+```
+
+- 启动时扫描 `~/.javaclaw/skills/*.yaml`，解析并注册
+- 消息路由时检测 `/` 前缀，匹配 trigger 后替换 system prompt 和工具子集
+- 未匹配时走默认 PromptBuilder 逻辑
+
+### Step 3：沙箱加固
 
 - Docker 执行加 `--memory=256m --cpus=0.5 --pids-limit=64`
 - 默认 `--network=none`，需要网络的工具单独放行
 - `config.yaml` 配置沙箱策略（超时、内存、网络白名单）
 
-### Step 3：更多工具和 Channel
+### Step 4：更多工具和 Channel
 
 ```
 com.javaclaw.tools/
@@ -347,7 +362,7 @@ com.javaclaw.channels/
 └── SlackAdapter.java
 ```
 
-### Step 4：Provider 可靠性增强（在 Phase 2 最小版基础上）
+### Step 5：Provider 可靠性增强（在 Phase 2 最小版基础上）
 
 ```
 com.javaclaw.providers/
@@ -360,8 +375,8 @@ com.javaclaw.providers/
 
 ### 验证
 
-- 单测：CircuitBreaker 状态机、SandboxedPluginProxy JSON-RPC
-- 集成脚本：加载测试插件 → mock 主模型故障 → 验证自动降级
+- 单测：McpClient JSON-RPC 通信、SkillLoader YAML 解析、CircuitBreaker 状态机
+- 集成脚本：启动 mock MCP Server → 验证工具自动注册 → 斜杠命令触发 Skill → mock 主模型故障 → 验证自动降级
 
 ---
 

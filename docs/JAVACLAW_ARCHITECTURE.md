@@ -292,7 +292,7 @@ public interface MemoryStore {
 - `~/.javaclaw/config.yaml` — 主配置文件
 - 环境变量覆盖（12-Factor 风格）
 - 配置分三级：
-  - **静态**（改了要重启）：数据库连接、端口、沙箱类型、插件目录
+  - **静态**（改了要重启）：数据库连接、端口、沙箱类型、MCP Server 配置
   - **热更新**（运行时可改）：模型选择、Channel 启用/禁用、工具权限、提示词模板
   - **安全策略**（热更新但需确认）：白名单、审批规则、限流阈值——变更需配对码二次验证
 - 热更新机制：`ConfigWatcher` 监听配置文件变更（`WatchService`），解析后通知实现了 `Reconfigurable` 接口的组件
@@ -363,7 +363,8 @@ javaclaw/
     │   ├── security/                 # 沙箱执行器
     │   ├── memory/                   # Lucene 混合检索
     │   ├── observability/            # 成本追踪 + 指标 + 自检
-    │   └── plugins/                  # 插件加载
+    │   ├── mcp/                      # MCP 协议客户端
+    │   └── skills/                    # Skill 加载与注册
     └── resources/
         ├── application.yml
         └── db/migration/
@@ -371,26 +372,60 @@ javaclaw/
 
 ---
 
-## 8. 插件系统
+## 8. 扩展系统（MCP + Skill）
 
-双轨制：可信插件进程内，不可信插件进程外隔离。
+### 8.1 MCP（外部工具扩展）
 
-**Track A（内置/可信）**：SPI 进程内加载
-- 官方插件和用户自己写的插件
-- `~/.javaclaw/plugins/trusted/` 目录，JAR 包启动时扫描
-- `META-INF/services/` 声明实现类
+通过 MCP（Model Context Protocol）协议扩展工具能力，不自建插件系统。
 
-**Track B（第三方/不可信）**：子进程隔离
-- 独立 JVM 子进程运行，通过 stdin/stdout JSON-RPC 通信
-- `~/.javaclaw/plugins/sandboxed/` 目录
-- 插件声明权限需求（`plugin.yaml`：网络、文件系统、Shell），加载时用户确认
-- 默认所有第三方插件走 Track B，用户可手动"信任"升级到 Track A
+**MCP Client**：
+- 管理外部 MCP Server 子进程的生命周期（启动、停止、健康检查）
+- 通过 stdin/stdout JSON-RPC 2.0 通信
+- `~/.javaclaw/config.yaml` 的 `mcp-servers` 节声明要加载的 server
+- 自动将 MCP Server 暴露的 tools 注册到 ToolRegistry
 
-**可扩展点**：
-- `ModelProvider` — 新增模型后端
-- `ChannelAdapter` — 新增消息平台
-- `Tool` — 新增工具能力
-- `MemoryStore` — 替换记忆实现
+**配置示例**：
+```yaml
+mcp-servers:
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/docs"]
+  github:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_TOKEN: "xxx"
+```
+
+**优势**：
+- 语言无关 — MCP Server 可用任何语言编写
+- 天然进程隔离 — 崩溃不影响主程序
+- 生态现成 — 直接复用社区已有的 MCP Server
+- 标准协议 — 与 Claude Code、Cursor 等工具生态互通
+
+### 8.2 Skill（行为模式扩展）
+
+Skill 是对「system prompt + 工具子集」的打包，定义 Agent 在特定场景下的行为模式。
+
+**目录结构**：`~/.javaclaw/skills/<name>.yaml`
+
+**Skill 定义格式**：
+```yaml
+name: code-review
+trigger: /review
+description: 审查指定文件的代码质量
+system_prompt: |
+  你是代码审查专家。阅读用户指定的文件，
+  从安全性、可读性、性能三个维度给出改进建议。
+tools: [file_read, shell]
+```
+
+**工作机制**：
+- `SkillLoader` 启动时扫描 `~/.javaclaw/skills/*.yaml`，注册到 SkillRegistry
+- 用户输入 `/review src/Main.java` 时，匹配 trigger，替换 system prompt 和工具子集
+- 未匹配任何 skill 时走默认 PromptBuilder 逻辑
+
+**与 MCP 的关系**：MCP 扩展「Agent 能做什么」（工具能力），Skill 扩展「Agent 怎么做」（行为模式）。两者互补。
 
 ---
 
@@ -432,11 +467,12 @@ javaclaw/
 - Agent 集成记忆检索
 - 目标：Agent 有长期记忆，运行可监控
 
-### Phase 6：插件 + 沙箱加固
+### Phase 6：MCP + Skill + 沙箱加固
 
-- `plugins` 包：插件双轨制 Track A（SPI 进程内）+ Track B（子进程隔离）
+- `mcp` 包：MCP Client（JSON-RPC 2.0 over stdio），自动发现并注册外部工具
+- `skills` 包：SkillLoader + SkillRegistry，YAML 定义行为模式，斜杠命令触发
 - 沙箱加固：资源限制（CPU/内存/网络）、自动检测 Docker 可用性、策略配置
-- 更多工具（Browser、Git、Cron）
+- 更多内置工具（Browser、Git、Cron）
 - 更多 Channel（Slack、微信、飞书）
 - 目标：系统可扩展，安全加固完成
 

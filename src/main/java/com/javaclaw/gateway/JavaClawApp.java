@@ -31,6 +31,7 @@ import com.javaclaw.shared.model.AgentRequest;
 import com.javaclaw.shared.model.OutboundMessage;
 import com.javaclaw.tools.FileReadTool;
 import com.javaclaw.tools.FileWriteTool;
+import com.javaclaw.tools.MemoryForgetTool;
 import com.javaclaw.tools.MemoryRecallTool;
 import com.javaclaw.tools.MemoryStoreTool;
 import com.javaclaw.tools.ShellTool;
@@ -118,6 +119,7 @@ public class JavaClawApp {
             var memoryStore = new LuceneMemoryStore(embeddingService, indexPath);
             toolRegistry.register(new MemoryStoreTool(memoryStore, securityPolicy));
             toolRegistry.register(new MemoryRecallTool(memoryStore, securityPolicy));
+            toolRegistry.register(new MemoryForgetTool(memoryStore, securityPolicy));
             agent.setMemoryStore(memoryStore);
             ctx.registerShutdownHook();
             Runtime.getRuntime().addShutdownHook(new Thread(memoryStore::close, "memory-close"));

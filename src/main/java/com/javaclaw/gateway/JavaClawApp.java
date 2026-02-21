@@ -22,6 +22,7 @@ import com.javaclaw.observability.DoctorCommand;
 import com.javaclaw.providers.DeepSeekProvider;
 import com.javaclaw.providers.OllamaProvider;
 import com.javaclaw.providers.ProviderRouter;
+import com.javaclaw.providers.ReliableProvider;
 import com.javaclaw.shared.config.ConfigLoader;
 import com.javaclaw.security.DockerExecutor;
 import com.javaclaw.security.RestrictedNativeExecutor;
@@ -65,10 +66,9 @@ public class JavaClawApp {
         if (apiKey.isBlank()) {
             log.warn("DeepSeek API key not configured. Set api-keys.deepseek in ~/.javaclaw/config.yaml");
         }
-        var router = new ProviderRouter();
-        router.register(new DeepSeekProvider(apiKey));
-        router.register(new OllamaProvider("qwen3:4b"));
-        router.setPrimary("ollama");
+        var reliable = new ReliableProvider(
+                java.util.List.of(new OllamaProvider("qwen3:4b"), new DeepSeekProvider(apiKey)),
+                2, 500);
 
         // Tools
         var workDir = System.getenv().getOrDefault("JAVACLAW_WORK_DIR", System.getProperty("user.home"));
@@ -122,7 +122,7 @@ public class JavaClawApp {
         var sessionStore = new PostgresSessionStore(dataSource);
         var costTracker = new CostTracker(dataSource);
         var doctor = new DoctorCommand(dataSource, config.apiKeys().getOrDefault("embedding-base-url", ""));
-        var agent = new DefaultAgentOrchestrator(router, toolRegistry, workDir, sessionStore, approvalInterceptor, costTracker);
+        var agent = new DefaultAgentOrchestrator(reliable, toolRegistry, workDir, sessionStore, approvalInterceptor, costTracker);
 
         // Memory
         var embeddingBaseUrl = config.apiKeys().getOrDefault("embedding-base-url", "http://localhost:11434/v1");

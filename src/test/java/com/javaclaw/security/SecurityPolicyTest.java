@@ -61,7 +61,7 @@ class SecurityPolicyTest {
 
     @Test
     void validateDomainAllowsSubdomain() {
-        assertDoesNotThrow(() -> policy().validateDomain("https://sub.example.com/path"));
+        assertDoesNotThrow(() -> policy().validateDomain("https://api.github.com/repos"));
     }
 
     @Test

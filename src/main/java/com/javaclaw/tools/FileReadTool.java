@@ -2,13 +2,18 @@ package com.javaclaw.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javaclaw.security.SecurityPolicy;
 
 import java.nio.file.Files;
-import java.nio.file.Path;
 
 public class FileReadTool implements Tool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final SecurityPolicy securityPolicy;
+
+    public FileReadTool(SecurityPolicy securityPolicy) {
+        this.securityPolicy = securityPolicy;
+    }
 
     @Override public String name() { return "file_read"; }
 
@@ -28,12 +33,11 @@ public class FileReadTool implements Tool {
     @Override
     public ToolResult execute(ToolContext ctx, JsonNode input) {
         try {
-            var base = Path.of(ctx.workDir()).toRealPath();
-            var target = base.resolve(input.get("path").asText()).toRealPath();
-            if (!target.startsWith(base)) {
-                return new ToolResult("Path escapes working directory", true);
-            }
-            return new ToolResult(Files.readString(target), false);
+            securityPolicy.checkRateLimit("file_read");
+            var validated = securityPolicy.validatePath(input.get("path").asText(), true);
+            return new ToolResult(Files.readString(validated), false);
+        } catch (SecurityException e) {
+            return new ToolResult(e.getMessage(), true);
         } catch (Exception e) {
             return new ToolResult(e.getMessage(), true);
         }

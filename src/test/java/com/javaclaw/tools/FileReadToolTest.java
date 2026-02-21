@@ -1,6 +1,7 @@
 package com.javaclaw.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javaclaw.security.SecurityPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,10 +18,14 @@ class FileReadToolTest {
     @TempDir
     Path tempDir;
 
+    private SecurityPolicy policy() {
+        return new SecurityPolicy(tempDir, true, 1000, Set.of());
+    }
+
     @Test
     void readsFileInsideWorkDir() throws Exception {
         Files.writeString(tempDir.resolve("test.txt"), "content");
-        var tool = new FileReadTool();
+        var tool = new FileReadTool(policy());
         var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
         var input = MAPPER.createObjectNode().put("path", "test.txt");
 
@@ -36,14 +41,14 @@ class FileReadToolTest {
         var outside = Files.createTempFile(tempDir.getParent(), "secret", ".txt");
         Files.writeString(outside, "sensitive-data");
         try {
-            var tool = new FileReadTool();
+            var tool = new FileReadTool(policy());
             var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
             var input = MAPPER.createObjectNode().put("path", "../" + outside.getFileName());
 
             var result = tool.execute(ctx, input);
 
             assertTrue(result.isError());
-            assertTrue(result.output().contains("Path escapes working directory"));
+            assertTrue(result.output().contains("Path") || result.output().contains("traversal"));
         } finally {
             Files.deleteIfExists(outside);
         }

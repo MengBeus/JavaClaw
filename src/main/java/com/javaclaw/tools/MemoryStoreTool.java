@@ -3,6 +3,7 @@ package com.javaclaw.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.memory.MemoryStore;
+import com.javaclaw.security.SecurityPolicy;
 
 import java.util.Map;
 
@@ -10,9 +11,11 @@ public class MemoryStoreTool implements Tool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final MemoryStore memoryStore;
+    private final SecurityPolicy securityPolicy;
 
-    public MemoryStoreTool(MemoryStore memoryStore) {
+    public MemoryStoreTool(MemoryStore memoryStore, SecurityPolicy securityPolicy) {
         this.memoryStore = memoryStore;
+        this.securityPolicy = securityPolicy;
     }
 
     @Override public String name() { return "memory_store"; }
@@ -35,9 +38,14 @@ public class MemoryStoreTool implements Tool {
 
     @Override
     public ToolResult execute(ToolContext ctx, JsonNode input) {
-        var content = input.path("content").asText("");
-        if (content.isBlank()) return new ToolResult("content is required", true);
-        memoryStore.store(content, Map.of("sessionId", ctx.sessionId()));
-        return new ToolResult("Stored to memory.", false);
+        try {
+            securityPolicy.checkRateLimit("memory_store");
+            var content = input.path("content").asText("");
+            if (content.isBlank()) return new ToolResult("content is required", true);
+            memoryStore.store(content, Map.of("sessionId", ctx.sessionId()));
+            return new ToolResult("Stored to memory.", false);
+        } catch (SecurityException e) {
+            return new ToolResult(e.getMessage(), true);
+        }
     }
 }

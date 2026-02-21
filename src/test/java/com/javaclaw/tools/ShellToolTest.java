@@ -2,6 +2,7 @@ package com.javaclaw.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.security.ExecutionResult;
+import com.javaclaw.security.SecurityPolicy;
 import com.javaclaw.security.ToolExecutor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +20,10 @@ class ShellToolTest {
     @TempDir
     Path tempDir;
 
+    private SecurityPolicy policy() {
+        return new SecurityPolicy(tempDir, true, 1000, Set.of());
+    }
+
     @Test
     void marksNonZeroExitAsError() {
         ToolExecutor executor = new ToolExecutor() {
@@ -33,7 +38,7 @@ class ShellToolTest {
             }
         };
 
-        var tool = new ShellTool(executor);
+        var tool = new ShellTool(executor, policy());
         var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
         var input = MAPPER.createObjectNode().put("command", "x");
 
@@ -56,7 +61,7 @@ class ShellToolTest {
             }
         };
 
-        var tool = new ShellTool(executor);
+        var tool = new ShellTool(executor, policy());
         var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
         var input = MAPPER.createObjectNode().put("command", "x");
 

@@ -2,6 +2,7 @@ package com.javaclaw.security;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -18,6 +19,11 @@ public class RestrictedNativeExecutor implements ToolExecutor {
 
     @Override
     public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName) {
+        return execute(command, workDir, timeoutSeconds, toolName, null);
+    }
+
+    @Override
+    public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName, Map<String, String> env) {
         if (workDir != null && !isAllowedDir(workDir)) {
             return new ExecutionResult("[BLOCKED] Working directory not in whitelist: " + workDir, -1);
         }
@@ -32,6 +38,10 @@ public class RestrictedNativeExecutor implements ToolExecutor {
                     : new String[]{"bash", "-c", command};
             var pb = new ProcessBuilder(shell);
             if (workDir != null) pb.directory(new File(workDir));
+            if (env != null) {
+                pb.environment().clear();
+                pb.environment().putAll(env);
+            }
             pb.redirectErrorStream(true);
             var proc = pb.start();
             var stdout = new java.io.ByteArrayOutputStream();

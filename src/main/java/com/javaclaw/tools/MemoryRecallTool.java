@@ -3,14 +3,17 @@ package com.javaclaw.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.memory.MemoryStore;
+import com.javaclaw.security.SecurityPolicy;
 
 public class MemoryRecallTool implements Tool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final MemoryStore memoryStore;
+    private final SecurityPolicy securityPolicy;
 
-    public MemoryRecallTool(MemoryStore memoryStore) {
+    public MemoryRecallTool(MemoryStore memoryStore, SecurityPolicy securityPolicy) {
         this.memoryStore = memoryStore;
+        this.securityPolicy = securityPolicy;
     }
 
     @Override public String name() { return "memory_recall"; }
@@ -31,14 +34,19 @@ public class MemoryRecallTool implements Tool {
 
     @Override
     public ToolResult execute(ToolContext ctx, JsonNode input) {
-        var query = input.path("query").asText("");
-        if (query.isBlank()) return new ToolResult("query is required", true);
-        var results = memoryStore.recall(query, 5);
-        if (results.isEmpty()) return new ToolResult("No memories found.", false);
-        var sb = new StringBuilder();
-        for (var r : results) {
-            sb.append("- [").append(String.format("%.3f", r.score())).append("] ").append(r.content()).append("\n");
+        try {
+            securityPolicy.checkRateLimit("memory_recall");
+            var query = input.path("query").asText("");
+            if (query.isBlank()) return new ToolResult("query is required", true);
+            var results = memoryStore.recall(query, 5);
+            if (results.isEmpty()) return new ToolResult("No memories found.", false);
+            var sb = new StringBuilder();
+            for (var r : results) {
+                sb.append("- [").append(String.format("%.3f", r.score())).append("] ").append(r.content()).append("\n");
+            }
+            return new ToolResult(sb.toString(), false);
+        } catch (SecurityException e) {
+            return new ToolResult(e.getMessage(), true);
         }
-        return new ToolResult(sb.toString(), false);
     }
 }

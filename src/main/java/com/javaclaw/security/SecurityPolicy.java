@@ -68,16 +68,18 @@ public class SecurityPolicy {
         try {
             real = resolved.toRealPath();
         } catch (IOException e) {
-            // File doesn't exist yet — check parent
-            var parent = resolved.getParent();
-            if (parent == null) throw new SecurityException("Invalid path");
+            // File doesn't exist yet — walk up to nearest existing ancestor
+            var ancestor = resolved.getParent();
+            while (ancestor != null && !Files.exists(ancestor)) {
+                ancestor = ancestor.getParent();
+            }
+            if (ancestor == null) throw new SecurityException("Invalid path");
             try {
-                var realParent = parent.toRealPath();
-                if (!realParent.startsWith(workspaceRoot.toRealPath())) {
+                if (!ancestor.toRealPath().startsWith(workspaceRoot.toRealPath())) {
                     throw new SecurityException("Path escapes workspace");
                 }
             } catch (IOException ex) {
-                throw new SecurityException("Parent directory does not exist");
+                throw new SecurityException("Cannot resolve ancestor path");
             }
             return resolved;
         }

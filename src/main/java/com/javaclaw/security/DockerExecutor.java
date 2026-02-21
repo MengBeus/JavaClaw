@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class DockerExecutor implements ToolExecutor {
@@ -18,6 +19,11 @@ public class DockerExecutor implements ToolExecutor {
 
     @Override
     public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName) {
+        return execute(command, workDir, timeoutSeconds, toolName, null);
+    }
+
+    @Override
+    public ExecutionResult execute(String command, String workDir, long timeoutSeconds, String toolName, Map<String, String> env) {
         try {
             var cmd = new ArrayList<String>();
             cmd.add("docker"); cmd.add("run"); cmd.add("--rm");
@@ -26,6 +32,12 @@ public class DockerExecutor implements ToolExecutor {
             cmd.add("--pids-limit=" + config.pidsLimit());
             if (!config.networkWhitelist().contains(toolName)) {
                 cmd.add("--network=none");
+            }
+            if (env != null) {
+                for (var entry : env.entrySet()) {
+                    cmd.add("-e");
+                    cmd.add(entry.getKey() + "=" + entry.getValue());
+                }
             }
             cmd.add("-v"); cmd.add(workDir + ":/work");
             cmd.add("-w"); cmd.add("/work");

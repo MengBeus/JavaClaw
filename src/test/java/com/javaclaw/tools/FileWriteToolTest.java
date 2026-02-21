@@ -1,6 +1,7 @@
 package com.javaclaw.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javaclaw.security.SecurityPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -19,9 +20,13 @@ class FileWriteToolTest {
     @TempDir
     Path tempDir;
 
+    private SecurityPolicy policy() {
+        return new SecurityPolicy(tempDir, true, 1000, Set.of());
+    }
+
     @Test
     void writesInsideWorkDir() throws Exception {
-        var tool = new FileWriteTool();
+        var tool = new FileWriteTool(policy());
         var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
         var input = MAPPER.createObjectNode()
                 .put("path", "a/b.txt")
@@ -35,7 +40,7 @@ class FileWriteToolTest {
 
     @Test
     void rejectsTraversalWithoutCreatingOutsideDirs() {
-        var tool = new FileWriteTool();
+        var tool = new FileWriteTool(policy());
         var ctx = new ToolContext(tempDir.toString(), "s1", Set.of());
         var outsideDirName = "escape-" + System.nanoTime();
         var input = MAPPER.createObjectNode()

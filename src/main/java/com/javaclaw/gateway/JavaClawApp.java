@@ -25,6 +25,7 @@ import com.javaclaw.providers.ProviderRouter;
 import com.javaclaw.shared.config.ConfigLoader;
 import com.javaclaw.security.DockerExecutor;
 import com.javaclaw.security.RestrictedNativeExecutor;
+import com.javaclaw.security.SecurityPolicy;
 import com.javaclaw.sessions.PostgresSessionStore;
 import com.javaclaw.shared.model.AgentRequest;
 import com.javaclaw.shared.model.OutboundMessage;
@@ -66,14 +67,20 @@ public class JavaClawApp {
 
         // Tools
         var workDir = System.getenv().getOrDefault("JAVACLAW_WORK_DIR", System.getProperty("user.home"));
+        var toolsConfig = config.tools();
+        var securityPolicy = new SecurityPolicy(
+                java.nio.file.Path.of(workDir),
+                toolsConfig.security().workspaceOnly(),
+                toolsConfig.security().maxActionsPerHour(),
+                toolsConfig.httpRequest().allowedDomains());
         var docker = new DockerExecutor(config.sandbox());
         var dockerAvailable = docker.isAvailable();
         var executor = dockerAvailable ? docker
                 : new RestrictedNativeExecutor(Set.of(workDir));
         var toolRegistry = new ToolRegistry();
-        toolRegistry.register(new ShellTool(executor, config.sandbox().timeoutSeconds()));
-        toolRegistry.register(new FileReadTool());
-        toolRegistry.register(new FileWriteTool());
+        toolRegistry.register(new ShellTool(executor, config.sandbox().timeoutSeconds(), securityPolicy));
+        toolRegistry.register(new FileReadTool(securityPolicy));
+        toolRegistry.register(new FileWriteTool(securityPolicy));
 
         // Sandbox + Approval (三级策略)
         var stdinReader = new BufferedReader(new InputStreamReader(System.in));
@@ -109,8 +116,8 @@ public class JavaClawApp {
         var indexPath = System.getProperty("user.home") + "/.javaclaw/index";
         try {
             var memoryStore = new LuceneMemoryStore(embeddingService, indexPath);
-            toolRegistry.register(new MemoryStoreTool(memoryStore));
-            toolRegistry.register(new MemoryRecallTool(memoryStore));
+            toolRegistry.register(new MemoryStoreTool(memoryStore, securityPolicy));
+            toolRegistry.register(new MemoryRecallTool(memoryStore, securityPolicy));
             agent.setMemoryStore(memoryStore);
             ctx.registerShutdownHook();
             Runtime.getRuntime().addShutdownHook(new Thread(memoryStore::close, "memory-close"));

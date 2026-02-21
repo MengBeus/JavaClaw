@@ -53,6 +53,9 @@ public class WebSearchTool implements Tool {
     public ToolResult execute(ToolContext ctx, JsonNode input) {
         try {
             securityPolicy.checkRateLimit("web_search");
+            if (!"duckduckgo".equalsIgnoreCase(config.provider())) {
+                return new ToolResult("Unsupported search provider: " + config.provider() + ". Only 'duckduckgo' is supported.", true);
+            }
             var query = input.path("query").asText("");
             if (query.isBlank()) return new ToolResult("query is required", true);
 

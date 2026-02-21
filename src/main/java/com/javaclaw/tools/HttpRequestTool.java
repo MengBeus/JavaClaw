@@ -81,11 +81,25 @@ public class HttpRequestTool implements Tool {
             builder.method(method, bodyPub);
 
             var client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .followRedirects(HttpClient.Redirect.NEVER)
                     .connectTimeout(Duration.ofSeconds(config.timeoutSeconds()))
                     .build();
-            var response = client.send(builder.build(),
-                    HttpResponse.BodyHandlers.ofString());
+
+            // Manual redirect loop with per-hop SSRF validation
+            var currentReq = builder.build();
+            HttpResponse<String> response = null;
+            for (int hops = 0; hops < 5; hops++) {
+                response = client.send(currentReq, HttpResponse.BodyHandlers.ofString());
+                int sc = response.statusCode();
+                if (sc < 300 || sc >= 400) break;
+                var location = response.headers().firstValue("location").orElse(null);
+                if (location == null) break;
+                var redirectUri = currentReq.uri().resolve(location);
+                securityPolicy.validateDomain(redirectUri.toString());
+                currentReq = HttpRequest.newBuilder(redirectUri)
+                        .timeout(Duration.ofSeconds(config.timeoutSeconds()))
+                        .GET().build();
+            }
 
             return new ToolResult(formatResponse(response), false);
         } catch (SecurityException e) {

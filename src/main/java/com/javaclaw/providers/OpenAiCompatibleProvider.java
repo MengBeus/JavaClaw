@@ -72,7 +72,11 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
             throw new RuntimeException("LLM API error " + resp.statusCode() + ": " + resp.body());
         }
 
-        return parseResponse(mapper.readTree(resp.body()));
+        var respBody = resp.body().trim();
+        if (respBody.startsWith("{")) {
+            return parseResponse(mapper.readTree(respBody));
+        }
+        return parseSSE(respBody);
     }
 
     private ChatResponse parseResponse(JsonNode root) {
@@ -96,5 +100,62 @@ public abstract class OpenAiCompatibleProvider implements ModelProvider {
             }
         }
         return new ChatResponse(model, content != null ? content : "", usage, toolCalls);
+    }
+
+    private ChatResponse parseSSE(String sse) throws Exception {
+        var contentBuf = new StringBuilder();
+        String model = null;
+        Map<String, Integer> usage = Map.of("promptTokens", 0, "completionTokens", 0);
+        // index -> (id, name, argsBuf)
+        var toolCallMap = new LinkedHashMap<Integer, String[]>();
+        var toolCallArgs = new LinkedHashMap<Integer, StringBuilder>();
+
+        for (var line : sse.split("\n")) {
+            line = line.trim();
+            if (!line.startsWith("data:")) continue;
+            var data = line.substring(5).trim();
+            if ("[DONE]".equals(data)) break;
+
+            var node = mapper.readTree(data);
+            if (model == null) model = node.path("model").asText(null);
+
+            var u = node.path("usage");
+            if (!u.isMissingNode() && u.has("prompt_tokens")) {
+                usage = Map.of(
+                        "promptTokens", u.path("prompt_tokens").asInt(0),
+                        "completionTokens", u.path("completion_tokens").asInt(0));
+            }
+
+            var delta = node.path("choices").path(0).path("delta");
+            var c = delta.path("content").asText(null);
+            if (c != null) contentBuf.append(c);
+
+            var tcs = delta.path("tool_calls");
+            if (tcs.isArray()) {
+                for (var tc : tcs) {
+                    int idx = tc.path("index").asInt(0);
+                    var id = tc.path("id").asText(null);
+                    var fn = tc.path("function");
+                    var name = fn.path("name").asText(null);
+                    if (id != null && !toolCallMap.containsKey(idx)) {
+                        toolCallMap.put(idx, new String[]{id, name});
+                        toolCallArgs.put(idx, new StringBuilder());
+                    }
+                    var args = fn.path("arguments").asText(null);
+                    if (args != null && toolCallArgs.containsKey(idx)) {
+                        toolCallArgs.get(idx).append(args);
+                    }
+                }
+            }
+        }
+
+        var toolCalls = new java.util.ArrayList<ToolCallInfo>();
+        for (var entry : toolCallMap.entrySet()) {
+            var v = entry.getValue();
+            toolCalls.add(new ToolCallInfo(v[0], v[1],
+                    toolCallArgs.get(entry.getKey()).toString()));
+        }
+
+        return new ChatResponse(model, contentBuf.toString(), usage, toolCalls);
     }
 }

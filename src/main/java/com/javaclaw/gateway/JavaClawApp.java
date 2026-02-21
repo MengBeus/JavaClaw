@@ -137,7 +137,8 @@ public class JavaClawApp {
         // Memory
         var embeddingBaseUrl = config.apiKeys().getOrDefault("embedding-base-url", "http://localhost:11434/v1");
         var embeddingModel = config.apiKeys().getOrDefault("embedding-model", "nomic-embed-text");
-        var embeddingService = new EmbeddingService(embeddingBaseUrl, apiKey, embeddingModel);
+        var embeddingApiKey = config.apiKeys().getOrDefault("embedding-api-key", "");
+        var embeddingService = new EmbeddingService(embeddingBaseUrl, embeddingApiKey, embeddingModel);
         var indexPath = System.getProperty("user.home") + "/.javaclaw/index";
         try {
             var memoryStore = new LuceneMemoryStore(embeddingService, indexPath);
